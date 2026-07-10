@@ -5,18 +5,21 @@
 import sqlite3
 from pathlib import Path
 
+# Путь к БД относительно корня проекта, а не CWD
+_PROJECT_ROOT = Path(__file__).resolve().parent.parent
+_DB_PATH = _PROJECT_ROOT / "database" / "history.db"
+
 
 class HistoryManager:
     """Управление историей просмотров"""
 
     def __init__(self):
-        Path("database").mkdir(exist_ok=True)
-        self.connection = sqlite3.connect("database/history.db")
+        _DB_PATH.parent.mkdir(exist_ok=True)
+        self.connection = sqlite3.connect(str(_DB_PATH))
         self.cursor = self.connection.cursor()
         self.create_table()
 
     def create_table(self):
-        """Создаёт таблицу в БД"""
         self.cursor.execute("""
             CREATE TABLE IF NOT EXISTS history (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -28,31 +31,30 @@ class HistoryManager:
         self.connection.commit()
 
     def save_video(self, file_path, position):
-        """Сохраняет или обновляет позицию видео"""
-        # Сначала пытаемся обновить
+        file_path = str(Path(file_path).resolve())
         self.cursor.execute("""
-            UPDATE history 
+            UPDATE history
             SET position = ?, last_opened = CURRENT_TIMESTAMP
             WHERE file_path = ?
         """, (position, file_path))
-        
-        # Если ничего не обновилось — вставляем новую запись
+
         if self.cursor.rowcount == 0:
             self.cursor.execute("""
                 INSERT INTO history (file_path, position, last_opened)
                 VALUES (?, ?, CURRENT_TIMESTAMP)
             """, (file_path, position))
-        
+
         self.connection.commit()
 
     def get_position(self, file_path):
-        """Получает сохранённую позицию для видео"""
-        self.cursor.execute("SELECT position FROM history WHERE file_path = ?", (file_path,))
+        file_path = str(Path(file_path).resolve())
+        self.cursor.execute(
+            "SELECT position FROM history WHERE file_path = ?", (file_path,)
+        )
         result = self.cursor.fetchone()
         return result[0] if result else 0
 
     def get_last_video(self):
-        """Возвращает последнее открытое видео"""
         self.cursor.execute("""
             SELECT file_path, position FROM history
             ORDER BY last_opened DESC LIMIT 1
@@ -60,10 +62,8 @@ class HistoryManager:
         return self.cursor.fetchone()
 
     def clear_history(self):
-        """Очищает историю"""
         self.cursor.execute("DELETE FROM history")
         self.connection.commit()
 
     def close(self):
-        """Закрывает соединение с БД"""
         self.connection.close()
