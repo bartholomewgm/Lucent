@@ -3,8 +3,14 @@
 """
 
 from PyQt6.QtWidgets import (
-    QWidget, QPushButton, QLabel, QSlider,
-    QHBoxLayout, QVBoxLayout, QProgressBar, QMenu
+    QWidget,
+    QPushButton,
+    QLabel,
+    QSlider,
+    QHBoxLayout,
+    QVBoxLayout,
+    QProgressBar,
+    QMenu
 )
 from PyQt6.QtCore import Qt, QTimer, pyqtSignal
 from PyQt6.QtGui import QFont
@@ -12,17 +18,19 @@ from pathlib import Path
 
 from ui.cover_art import CoverArtWidget
 from ui.styles import (
-    SPOTIFY_ELEVATED, SPOTIFY_BORDER, SPOTIFY_TEXT,
-    SPOTIFY_TEXT_SUB, SPOTIFY_TEXT_MUTED, SPOTIFY_GREEN,
+    SPOTIFY_ELEVATED,
+    SPOTIFY_BORDER,
+    SPOTIFY_TEXT,
+    SPOTIFY_TEXT_SUB,
+    SPOTIFY_GREEN,
     SPOTIFY_GREEN_HOVER
 )
 
 
 class ControlsWidget(QWidget):
-    """Нижняя панель плеера как в Spotify"""
+    """Нижняя панель плеера в стиле Spotify"""
 
     speed_changed = pyqtSignal(str)
-
     SPEEDS = ["0.5x", "0.75x", "1.0x", "1.25x", "1.5x", "2.0x"]
 
     def __init__(self):
@@ -31,6 +39,7 @@ class ControlsWidget(QWidget):
         self._current_speed_index = 2
         self._muted = False
         self._volume_before_mute = 50
+
         self.setup_ui()
         self.setup_speed_menu()
         self.setStyleSheet(self._get_styles())
@@ -42,7 +51,9 @@ class ControlsWidget(QWidget):
         self.is_controls_visible = True
 
     def setup_ui(self):
-        # --- Прогресс сверху (как в Spotify) ---
+        """Создаёт все элементы управления"""
+
+        # ----- 1. ПРОГРЕСС СВЕРХУ -----
         self.position_slider = QSlider(Qt.Orientation.Horizontal)
         self.position_slider.setRange(0, 100)
         self.position_slider.setFixedHeight(12)
@@ -53,7 +64,7 @@ class ControlsWidget(QWidget):
         self.loading_bar.setTextVisible(False)
         self.loading_bar.setVisible(False)
 
-        # --- Левая часть: обложка + инфо ---
+        # ----- 2. ЛЕВАЯ ЧАСТЬ: обложка + информация о видео -----
         self.cover = CoverArtWidget(56)
 
         self.title_label = QLabel("Ничего не воспроизводится")
@@ -66,19 +77,21 @@ class ControlsWidget(QWidget):
         self.subtitle_label = QLabel("Откройте видео, чтобы начать")
         self.subtitle_label.setStyleSheet(f"color: {SPOTIFY_TEXT_SUB}; font-size: 11px;")
 
+        # Вертикальное расположение: название + подзаголовок
         info_layout = QVBoxLayout()
-        info_layout.setSpacing(2)
+        info_layout.setSpacing(4)
         info_layout.setContentsMargins(0, 0, 0, 0)
         info_layout.addWidget(self.title_label)
         info_layout.addWidget(self.subtitle_label)
 
+        # Горизонтальное расположение: обложка + информация
         left_layout = QHBoxLayout()
         left_layout.setSpacing(12)
         left_layout.addWidget(self.cover)
         left_layout.addLayout(info_layout)
         left_layout.addStretch()
 
-        # --- Центр: кнопки управления ---
+        # ----- 3. ЦЕНТР: кнопки управления -----
         self.prev_button = self._make_control_btn("⏮", 32)
         self.play_button = self._make_play_btn()
         self.next_button = self._make_control_btn("⏭", 32)
@@ -90,7 +103,7 @@ class ControlsWidget(QWidget):
         center_layout.addWidget(self.play_button)
         center_layout.addWidget(self.next_button)
 
-        # --- Правая часть: время, скорость, громкость ---
+        # ----- 4. ПРАВАЯ ЧАСТЬ: время, скорость, громкость -----
         self.time_label = QLabel("0:00 / 0:00")
         self.time_label.setStyleSheet(f"color: {SPOTIFY_TEXT_SUB}; font-size: 11px;")
         self.time_label.setMinimumWidth(90)
@@ -121,13 +134,14 @@ class ControlsWidget(QWidget):
         right_layout.addWidget(self.mute_button)
         right_layout.addWidget(self.volume_slider)
 
-        # --- Нижний ряд ---
+        # ----- 5. НИЖНИЙ РЯД -----
         bottom_row = QHBoxLayout()
         bottom_row.setContentsMargins(16, 0, 16, 12)
         bottom_row.addLayout(left_layout, stretch=3)
         bottom_row.addLayout(center_layout, stretch=2)
         bottom_row.addLayout(right_layout, stretch=3)
 
+        # ----- 6. ГЛАВНЫЙ ВЕРТИКАЛЬНЫЙ ЛЕЙАУТ -----
         main_layout = QVBoxLayout()
         main_layout.setContentsMargins(0, 0, 0, 0)
         main_layout.setSpacing(0)
@@ -177,24 +191,12 @@ class ControlsWidget(QWidget):
                 if speed_text in self.SPEEDS:
                     self._current_speed_index = self.SPEEDS.index(speed_text)
 
-    def set_play_button_state(self, is_playing: bool):
-        if is_playing:
-            self.play_button.setText("⏸")
-            self.play_button.setToolTip("Пауза (Пробел)")
-        else:
-            self.play_button.setText("▶")
-            self.play_button.setToolTip("Воспроизвести (Пробел)")
-
-    def show_loading(self, show: bool):
-        self.loading_bar.setVisible(show)
-
     def set_speed_text(self, text: str):
         self.speed_button.setText(text)
         if text in self.SPEEDS:
             self._current_speed_index = self.SPEEDS.index(text)
 
     def cycle_speed(self, direction: int):
-        """direction: +1 вверх, -1 вниз"""
         self._current_speed_index = max(
             0, min(len(self.SPEEDS) - 1, self._current_speed_index + direction)
         )
@@ -216,6 +218,9 @@ class ControlsWidget(QWidget):
             self.volume_slider.setValue(0)
             self._muted = True
             self.mute_button.setText("🔇")
+
+    def set_play_button_state(self, is_playing: bool):
+        self.play_button.setText("⏸" if is_playing else "▶")
 
     def update_track_info(self, file_path: str | None, duration_ms: int = 0):
         if not file_path:
@@ -263,7 +268,6 @@ class ControlsWidget(QWidget):
                 background-color: {SPOTIFY_ELEVATED};
                 border-top: 1px solid {SPOTIFY_BORDER};
             }}
-
             QPushButton#control_btn {{
                 background-color: transparent;
                 color: {SPOTIFY_TEXT_SUB};
@@ -273,9 +277,7 @@ class ControlsWidget(QWidget):
             }}
             QPushButton#control_btn:hover {{
                 color: {SPOTIFY_TEXT};
-                transform: scale(1.06);
             }}
-
             QPushButton#play_btn {{
                 background-color: {SPOTIFY_TEXT};
                 color: black;
@@ -285,9 +287,7 @@ class ControlsWidget(QWidget):
             }}
             QPushButton#play_btn:hover {{
                 background-color: #f0f0f0;
-                transform: scale(1.06);
             }}
-
             QPushButton {{
                 background-color: transparent;
                 color: {SPOTIFY_TEXT_SUB};
@@ -299,7 +299,6 @@ class ControlsWidget(QWidget):
                 color: {SPOTIFY_TEXT};
                 background-color: rgba(255, 255, 255, 0.08);
             }}
-
             QProgressBar {{
                 background-color: transparent;
                 border: none;
@@ -308,7 +307,6 @@ class ControlsWidget(QWidget):
             QProgressBar::chunk {{
                 background-color: {SPOTIFY_GREEN};
             }}
-
             QSlider::groove:horizontal {{
                 height: 4px;
                 background: rgba(255, 255, 255, 0.2);
@@ -330,7 +328,7 @@ class ControlsWidget(QWidget):
             }}
         """
 
-    # --- Автоскрытие в полноэкранном режиме ---
+    # ----- АВТОСКРЫТИЕ В ПОЛНОЭКРАННОМ РЕЖИМЕ -----
 
     def show_controls(self):
         self.setVisible(True)
@@ -353,5 +351,9 @@ class ControlsWidget(QWidget):
         self.auto_hide_timer.stop()
 
     def set_fullscreen_mode(self, is_fullscreen: bool):
-        self.stop_hide_timer()
-        self.show_controls()
+        if is_fullscreen:
+            self.show_controls()
+            self.start_hide_timer()
+        else:
+            self.stop_hide_timer()
+            self.show_controls()

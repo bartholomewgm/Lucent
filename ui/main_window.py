@@ -103,19 +103,25 @@ class MainWindow(QMainWindow):
         self.player.video_widget.mouseDoubleClickEvent = self._on_video_double_click
 
     def setup_connections(self):
+        # Сайдбар
         self.sidebar.open_clicked.connect(self.open_file)
 
+        # Кнопки управления
         self.controls.prev_button.clicked.connect(self.prev_video)
         self.controls.play_button.clicked.connect(self.play_pause)
         self.controls.next_button.clicked.connect(self.next_video)
 
+        # Ползунки
         self.controls.volume_slider.valueChanged.connect(self._on_volume_changed)
         self.controls.position_slider.sliderMoved.connect(self.player.set_position)
 
+        # Скорость
         self.controls.speed_changed.connect(self.change_speed)
 
+        # Плейлист
         self.playlist.itemDoubleClicked.connect(self.play_selected_video)
 
+        # Сигналы плеера
         self.player.position_changed.connect(self.update_position)
         self.player.duration_changed.connect(self.update_duration)
         self.player.media_state_changed.connect(self.on_media_state_changed)
@@ -179,6 +185,8 @@ class MainWindow(QMainWindow):
         v = max(0, self.controls.volume_slider.value() - 5)
         self.controls.volume_slider.setValue(v)
 
+    # --- Event Filter для полноэкранного режима ---
+
     def eventFilter(self, obj, event):
         if not self.isFullScreen():
             return super().eventFilter(obj, event)
@@ -200,7 +208,6 @@ class MainWindow(QMainWindow):
         return super().eventFilter(obj, event)
 
     def _handle_fullscreen_mouse(self, window_pos):
-        """Обработка мыши в полноэкранном режиме."""
         self.setCursor(Qt.CursorShape.ArrowCursor)
         self.start_cursor_timer()
 
@@ -299,7 +306,6 @@ class MainWindow(QMainWindow):
 
     def load_video(self, file_path: str):
         file_path = str(Path(file_path).resolve())
-        self.controls.show_loading(True)
 
         if self.current_file_path:
             self.history.save_video(self.current_file_path, self.player.get_position())
@@ -316,8 +322,6 @@ class MainWindow(QMainWindow):
             self.controls.set_play_button_state(True)
         else:
             QMessageBox.warning(self, "Ошибка", f"Не удалось загрузить видео:\n{file_path}")
-
-        self.controls.show_loading(False)
 
     def reload_video(self):
         if self.current_file_path:
