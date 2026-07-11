@@ -8,8 +8,8 @@ from PyQt6.QtWidgets import (
 from PyQt6.QtCore import Qt, pyqtSignal
 
 from ui.styles import (
-    SPOTIFY_BLACK, SPOTIFY_TEXT, SPOTIFY_TEXT_SUB,
-    SPOTIFY_TEXT_MUTED, SPOTIFY_GREEN, SPOTIFY_HOVER
+    SPOTIFY_BLACK, SPOTIFY_TEXT,
+    SPOTIFY_TEXT_MUTED, SPOTIFY_HOVER
 )
 from ui.playlist import PlaylistWidget
 
