@@ -1,7 +1,3 @@
-"""
-Главное окно приложения — layout в стиле Spotify
-"""
-
 from pathlib import Path
 
 from PyQt6.QtWidgets import (

@@ -1,7 +1,3 @@
-"""
-Виджет плейлиста в стиле Spotify
-"""
-
 from pathlib import Path
 
 from PyQt6.QtWidgets import QListWidget, QListWidgetItem, QWidget, QLabel, QVBoxLayout

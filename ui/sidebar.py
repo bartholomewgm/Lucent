@@ -1,7 +1,3 @@
-"""
-Боковая панель в стиле Spotify
-"""
-
 from PyQt6.QtWidgets import (
     QWidget, QVBoxLayout, QLabel, QPushButton
 )

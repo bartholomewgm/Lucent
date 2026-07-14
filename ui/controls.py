@@ -1,7 +1,3 @@
-"""
-Нижняя панель управления в стиле Spotify
-"""
-
 from PyQt6.QtWidgets import (
     QWidget,
     QPushButton,
@@ -67,14 +63,14 @@ class ControlsWidget(QWidget):
         # ----- 2. ЛЕВАЯ ЧАСТЬ: обложка + информация о видео -----
         self.cover = CoverArtWidget(56)
 
-        self.title_label = QLabel("Ничего не воспроизводится")
+        self.title_label = QLabel()
         title_font = QFont()
         title_font.setPointSize(13)
         title_font.setBold(True)
         self.title_label.setFont(title_font)
         self.title_label.setStyleSheet(f"color: {SPOTIFY_TEXT};")
 
-        self.subtitle_label = QLabel("Откройте видео, чтобы начать")
+        self.subtitle_label = QLabel()
         self.subtitle_label.setStyleSheet(f"color: {SPOTIFY_TEXT_SUB}; font-size: 11px;")
 
         # Вертикальное расположение: название + подзаголовок
