@@ -13,7 +13,8 @@ from PyQt6.QtGui import QShortcut, QKeySequence, QDragEnterEvent, QDropEvent
 
 from ui.sidebar import SidebarWidget
 from ui.controls import ControlsWidget
-from ui.styles import STYLE, SPOTIFY_DARK
+from ui.glass import GlassBackground
+from ui.styles import STYLE, GLASS_GAP, GLASS_RADIUS
 
 from core.player import VideoPlayer
 from core.history import HistoryManager
@@ -60,9 +61,11 @@ class MainWindow(QMainWindow):
     def setup_ui(self):
         # Область видео
         self.video_container = QWidget()
-        self.video_container.setStyleSheet(f"background-color: {SPOTIFY_DARK};")
+        self.video_container.setObjectName("video_card")
+        self.video_container.setAttribute(Qt.WidgetAttribute.WA_StyledBackground)
+        self._set_video_card_style(rounded=True)
         video_layout = QVBoxLayout()
-        video_layout.setContentsMargins(0, 0, 0, 0)
+        video_layout.setContentsMargins(8, 8, 8, 8)
         video_layout.addWidget(self.player.video_widget)
         self.video_container.setLayout(video_layout)
 
@@ -71,20 +74,21 @@ class MainWindow(QMainWindow):
         self.splitter.addWidget(self.sidebar)
         self.splitter.addWidget(self.video_container)
         self.splitter.setSizes([280, self.width() - 280])
-        self.splitter.setHandleWidth(1)
+        self.splitter.setHandleWidth(GLASS_GAP)
         self.splitter.setChildrenCollapsible(False)
         self.splitter.setStretchFactor(0, 0)
         self.splitter.setStretchFactor(1, 1)
         self.splitter.setStyleSheet("""
             QSplitter::handle {
-                background-color: #282828;
+                background-color: transparent;
             }
         """)
 
-        root = QWidget()
+        root = GlassBackground()
+        self.root = root
         root_layout = QVBoxLayout()
-        root_layout.setContentsMargins(0, 0, 0, 0)
-        root_layout.setSpacing(0)
+        root_layout.setContentsMargins(GLASS_GAP, GLASS_GAP, GLASS_GAP, GLASS_GAP)
+        root_layout.setSpacing(GLASS_GAP)
         root_layout.addWidget(self.splitter, stretch=1)
         root_layout.addWidget(self.controls)
         root.setLayout(root_layout)
@@ -98,6 +102,31 @@ class MainWindow(QMainWindow):
         self.controls.installEventFilter(self)
         self.player.video_widget.mouseDoubleClickEvent = self._on_video_double_click
 
+    def _set_video_card_style(self, rounded: bool):
+        if rounded:
+            self.video_container.setStyleSheet(f"""
+                QWidget#video_card {{
+                    background-color: rgba(0, 0, 0, 0.55);
+                    border: 1px solid rgba(255, 255, 255, 0.12);
+                    border-radius: {GLASS_RADIUS}px;
+                }}
+            """)
+        else:
+            self.video_container.setStyleSheet(
+                "QWidget#video_card { background-color: black; border: none; }"
+            )
+
+    def _set_glass_layout(self, glass: bool):
+        """Стеклянная раскладка с отступами или «голое» видео на весь экран"""
+        gap = GLASS_GAP if glass else 0
+        self.root.layout().setContentsMargins(gap, gap, gap, gap)
+        self.root.layout().setSpacing(gap)
+        self.root.plain = not glass
+        self.root.update()
+        self.splitter.setHandleWidth(gap)
+        self.video_container.layout().setContentsMargins(*([8] * 4 if glass else [0] * 4))
+        self._set_video_card_style(rounded=glass)
+
     def setup_connections(self):
         # Сайдбар
         self.sidebar.open_clicked.connect(self.open_file)
@@ -106,6 +135,7 @@ class MainWindow(QMainWindow):
         self.controls.prev_button.clicked.connect(self.prev_video)
         self.controls.play_button.clicked.connect(self.play_pause)
         self.controls.next_button.clicked.connect(self.next_video)
+        self.controls.fullscreen_button.clicked.connect(self.toggle_fullscreen)
 
         # Ползунки
         self.controls.volume_slider.valueChanged.connect(self._on_volume_changed)
@@ -170,8 +200,7 @@ class MainWindow(QMainWindow):
     def _on_volume_changed(self, value: int):
         self.player.set_volume(value)
         if value > 0:
-            self.controls._muted = False
-            self.controls.mute_button.setText("🔊")
+            self.controls.set_muted(False)
 
     def _volume_up(self):
         v = min(100, self.controls.volume_slider.value() + 5)
@@ -220,6 +249,7 @@ class MainWindow(QMainWindow):
     def toggle_fullscreen(self):
         if self.isFullScreen():
             self.showNormal()
+            self._set_glass_layout(True)
             self.sidebar.setVisible(True)
             self.controls.setVisible(True)
             self.controls.set_fullscreen_mode(False)
@@ -228,6 +258,7 @@ class MainWindow(QMainWindow):
             self.splitter.setSizes([280, self.width() - 280])
         else:
             self.showFullScreen()
+            self._set_glass_layout(False)
             self.sidebar.setVisible(False)
             self.controls.setVisible(True)
             self.controls.set_fullscreen_mode(True)

@@ -1,16 +1,16 @@
 """
-Миниатюра / обложка в стиле Spotify (нижняя панель)
+Миниатюра / обложка (нижняя панель)
 """
 
 from PyQt6.QtWidgets import QLabel
-from PyQt6.QtGui import QPixmap, QFont
+from PyQt6.QtGui import QPixmap
 from PyQt6.QtCore import Qt
 
-from ui.styles import SPOTIFY_CARD, SPOTIFY_TEXT_MUTED
+from ui.styles import GLASS_FILL, GLASS_TEXT_SUB, ICON_FONT, Icons
 
 
 class CoverArtWidget(QLabel):
-    """Квадратная обложка 56×56 как в Spotify player bar"""
+    """Квадратная стеклянная обложка 56×56"""
 
     def __init__(self, size: int = 56):
         super().__init__()
@@ -18,18 +18,18 @@ class CoverArtWidget(QLabel):
         self.setFixedSize(size, size)
         self.setAlignment(Qt.AlignmentFlag.AlignCenter)
         self.setStyleSheet(f"""
-            background-color: {SPOTIFY_CARD};
-            border-radius: 4px;
-            color: {SPOTIFY_TEXT_MUTED};
+            background-color: {GLASS_FILL};
+            border: 1px solid rgba(255, 255, 255, 0.14);
+            border-radius: 14px;
+            color: {GLASS_TEXT_SUB};
+            font-family: {ICON_FONT};
+            font-size: 20px;
         """)
         self.set_placeholder()
 
     def set_placeholder(self):
-        font = QFont()
-        font.setPointSize(18)
-        self.setFont(font)
-        self.setText("🎬")
         self.setPixmap(QPixmap())
+        self.setText(Icons.VIDEO)
 
     def set_pixmap_scaled(self, pixmap: QPixmap):
         if pixmap.isNull():

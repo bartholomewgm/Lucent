@@ -1,37 +1,37 @@
 from PyQt6.QtWidgets import (
-    QWidget,
     QPushButton,
     QLabel,
     QSlider,
     QHBoxLayout,
     QVBoxLayout,
-    QProgressBar,
-    QMenu
+    QProgressBar
 )
 from PyQt6.QtCore import Qt, QTimer, pyqtSignal
 from PyQt6.QtGui import QFont
 from pathlib import Path
 
 from ui.cover_art import CoverArtWidget
+from ui.glass import GlassPanel, make_glass_menu
 from ui.styles import (
-    SPOTIFY_ELEVATED,
-    SPOTIFY_BORDER,
-    SPOTIFY_TEXT,
-    SPOTIFY_TEXT_SUB,
-    SPOTIFY_GREEN,
-    SPOTIFY_GREEN_HOVER
+    GLASS_FILL,
+    GLASS_FILL_HOVER,
+    GLASS_FILL_PRESSED,
+    GLASS_TEXT,
+    GLASS_TEXT_SUB,
+    GLASS_ACCENT,
+    ICON_FONT,
+    Icons
 )
 
 
-class ControlsWidget(QWidget):
-    """Нижняя панель плеера в стиле Spotify"""
+class ControlsWidget(GlassPanel):
+    """Нижняя плавающая стеклянная панель плеера"""
 
     speed_changed = pyqtSignal(str)
     SPEEDS = ["0.5x", "0.75x", "1.0x", "1.25x", "1.5x", "2.0x"]
 
     def __init__(self):
         super().__init__()
-        self.setObjectName("player_bar")
         self._current_speed_index = 2
         self._muted = False
         self._volume_before_mute = 50
@@ -39,7 +39,7 @@ class ControlsWidget(QWidget):
         self.setup_ui()
         self.setup_speed_menu()
         self.setStyleSheet(self._get_styles())
-        self.setFixedHeight(100)
+        self.setFixedHeight(112)
 
         self.auto_hide_timer = QTimer()
         self.auto_hide_timer.setSingleShot(True)
@@ -52,7 +52,7 @@ class ControlsWidget(QWidget):
         # ----- 1. ПРОГРЕСС СВЕРХУ -----
         self.position_slider = QSlider(Qt.Orientation.Horizontal)
         self.position_slider.setRange(0, 100)
-        self.position_slider.setFixedHeight(12)
+        self.position_slider.setFixedHeight(16)
 
         self.loading_bar = QProgressBar()
         self.loading_bar.setRange(0, 0)
@@ -65,17 +65,17 @@ class ControlsWidget(QWidget):
 
         self.title_label = QLabel()
         title_font = QFont()
-        title_font.setPointSize(13)
-        title_font.setBold(True)
+        title_font.setPointSize(12)
+        title_font.setWeight(QFont.Weight.DemiBold)
         self.title_label.setFont(title_font)
-        self.title_label.setStyleSheet(f"color: {SPOTIFY_TEXT};")
+        self.title_label.setStyleSheet(f"color: {GLASS_TEXT};")
 
         self.subtitle_label = QLabel()
-        self.subtitle_label.setStyleSheet(f"color: {SPOTIFY_TEXT_SUB}; font-size: 11px;")
+        self.subtitle_label.setStyleSheet(f"color: {GLASS_TEXT_SUB}; font-size: 11px;")
 
         # Вертикальное расположение: название + подзаголовок
         info_layout = QVBoxLayout()
-        info_layout.setSpacing(4)
+        info_layout.setSpacing(2)
         info_layout.setContentsMargins(0, 0, 0, 0)
         info_layout.addWidget(self.title_label)
         info_layout.addWidget(self.subtitle_label)
@@ -88,12 +88,14 @@ class ControlsWidget(QWidget):
         left_layout.addStretch()
 
         # ----- 3. ЦЕНТР: кнопки управления -----
-        self.prev_button = self._make_control_btn("⏮", 32)
+        self.prev_button = self._make_control_btn(Icons.PREVIOUS, 40)
+        self.prev_button.setToolTip("Предыдущее (P)")
         self.play_button = self._make_play_btn()
-        self.next_button = self._make_control_btn("⏭", 32)
+        self.next_button = self._make_control_btn(Icons.NEXT, 40)
+        self.next_button.setToolTip("Следующее (N)")
 
         center_layout = QHBoxLayout()
-        center_layout.setSpacing(16)
+        center_layout.setSpacing(14)
         center_layout.setAlignment(Qt.AlignmentFlag.AlignCenter)
         center_layout.addWidget(self.prev_button)
         center_layout.addWidget(self.play_button)
@@ -101,20 +103,18 @@ class ControlsWidget(QWidget):
 
         # ----- 4. ПРАВАЯ ЧАСТЬ: время, скорость, громкость -----
         self.time_label = QLabel("0:00 / 0:00")
-        self.time_label.setStyleSheet(f"color: {SPOTIFY_TEXT_SUB}; font-size: 11px;")
+        self.time_label.setObjectName("time_label")
         self.time_label.setMinimumWidth(90)
         self.time_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
 
         self.speed_button = QPushButton("1.0x")
-        self.speed_button.setFixedSize(48, 28)
+        self.speed_button.setObjectName("pill_btn")
+        self.speed_button.setFixedSize(52, 30)
         self.speed_button.setCursor(Qt.CursorShape.PointingHandCursor)
         self.speed_button.setFocusPolicy(Qt.FocusPolicy.NoFocus)
         self.speed_button.setToolTip("Скорость ([ / ])")
 
-        self.mute_button = QPushButton("🔊")
-        self.mute_button.setFixedSize(32, 32)
-        self.mute_button.setCursor(Qt.CursorShape.PointingHandCursor)
-        self.mute_button.setFocusPolicy(Qt.FocusPolicy.NoFocus)
+        self.mute_button = self._make_icon_btn(Icons.VOLUME, 34)
         self.mute_button.setToolTip("Без звука (M)")
 
         self.volume_slider = QSlider(Qt.Orientation.Horizontal)
@@ -123,49 +123,55 @@ class ControlsWidget(QWidget):
         self.volume_slider.setFixedWidth(100)
         self.volume_slider.setToolTip("Громкость (↑/↓)")
 
+        self.fullscreen_button = self._make_icon_btn(Icons.FULLSCREEN, 34)
+        self.fullscreen_button.setToolTip("Полный экран (F)")
+
         right_layout = QHBoxLayout()
         right_layout.setSpacing(8)
         right_layout.addWidget(self.time_label)
         right_layout.addWidget(self.speed_button)
         right_layout.addWidget(self.mute_button)
         right_layout.addWidget(self.volume_slider)
+        right_layout.addWidget(self.fullscreen_button)
 
         # ----- 5. НИЖНИЙ РЯД -----
         bottom_row = QHBoxLayout()
-        bottom_row.setContentsMargins(16, 0, 16, 12)
+        bottom_row.setContentsMargins(18, 2, 18, 14)
         bottom_row.addLayout(left_layout, stretch=3)
         bottom_row.addLayout(center_layout, stretch=2)
         bottom_row.addLayout(right_layout, stretch=3)
 
         # ----- 6. ГЛАВНЫЙ ВЕРТИКАЛЬНЫЙ ЛЕЙАУТ -----
         main_layout = QVBoxLayout()
-        main_layout.setContentsMargins(0, 0, 0, 0)
-        main_layout.setSpacing(0)
+        main_layout.setContentsMargins(20, 12, 20, 0)
+        main_layout.setSpacing(4)
         main_layout.addWidget(self.loading_bar)
         main_layout.addWidget(self.position_slider)
         main_layout.addLayout(bottom_row)
 
         self.setLayout(main_layout)
 
-    def _make_control_btn(self, text: str, size: int) -> QPushButton:
-        btn = QPushButton(text)
+    def _make_icon_btn(self, glyph: str, size: int) -> QPushButton:
+        btn = QPushButton(glyph)
         btn.setFixedSize(size, size)
         btn.setCursor(Qt.CursorShape.PointingHandCursor)
         btn.setFocusPolicy(Qt.FocusPolicy.NoFocus)
+        btn.setObjectName("icon_btn")
+        return btn
+
+    def _make_control_btn(self, glyph: str, size: int) -> QPushButton:
+        btn = self._make_icon_btn(glyph, size)
         btn.setObjectName("control_btn")
         return btn
 
     def _make_play_btn(self) -> QPushButton:
-        btn = QPushButton("▶")
-        btn.setFixedSize(36, 36)
-        btn.setCursor(Qt.CursorShape.PointingHandCursor)
-        btn.setFocusPolicy(Qt.FocusPolicy.NoFocus)
+        btn = self._make_icon_btn(Icons.PLAY, 48)
         btn.setObjectName("play_btn")
         btn.setToolTip("Воспроизвести (Пробел)")
         return btn
 
     def setup_speed_menu(self):
-        self.speed_menu = QMenu(self)
+        self.speed_menu = make_glass_menu(self)
         for speed in self.SPEEDS:
             action = self.speed_menu.addAction(speed)
             action.setData(speed)
@@ -207,16 +213,18 @@ class ControlsWidget(QWidget):
     def toggle_mute(self):
         if self._muted:
             self.volume_slider.setValue(self._volume_before_mute)
-            self._muted = False
-            self.mute_button.setText("🔊")
+            self.set_muted(False)
         else:
             self._volume_before_mute = self.volume_slider.value()
             self.volume_slider.setValue(0)
-            self._muted = True
-            self.mute_button.setText("🔇")
+            self.set_muted(True)
+
+    def set_muted(self, muted: bool):
+        self._muted = muted
+        self.mute_button.setText(Icons.MUTE if muted else Icons.VOLUME)
 
     def set_play_button_state(self, is_playing: bool):
-        self.play_button.setText("⏸" if is_playing else "▶")
+        self.play_button.setText(Icons.PAUSE if is_playing else Icons.PLAY)
 
     def update_track_info(self, file_path: str | None, duration_ms: int = 0):
         if not file_path:
@@ -260,40 +268,55 @@ class ControlsWidget(QWidget):
 
     def _get_styles(self):
         return f"""
-            QWidget#player_bar {{
-                background-color: {SPOTIFY_ELEVATED};
-                border-top: 1px solid {SPOTIFY_BORDER};
+            QLabel#time_label {{
+                color: {GLASS_TEXT_SUB};
+                font-size: 11px;
+            }}
+            QPushButton#icon_btn, QPushButton#control_btn {{
+                background-color: transparent;
+                color: {GLASS_TEXT_SUB};
+                border: none;
+                border-radius: 17px;
+                font-family: {ICON_FONT};
+                font-size: 15px;
             }}
             QPushButton#control_btn {{
-                background-color: transparent;
-                color: {SPOTIFY_TEXT_SUB};
-                border: none;
-                border-radius: 16px;
-                font-size: 16px;
+                color: {GLASS_TEXT};
+                border-radius: 20px;
+                font-size: 17px;
             }}
-            QPushButton#control_btn:hover {{
-                color: {SPOTIFY_TEXT};
+            QPushButton#icon_btn:hover, QPushButton#control_btn:hover {{
+                color: {GLASS_TEXT};
+                background-color: {GLASS_FILL_HOVER};
+            }}
+            QPushButton#icon_btn:pressed, QPushButton#control_btn:pressed {{
+                background-color: {GLASS_FILL_PRESSED};
             }}
             QPushButton#play_btn {{
-                background-color: {SPOTIFY_TEXT};
-                color: black;
-                border: none;
-                border-radius: 18px;
-                font-size: 14px;
+                background-color: qlineargradient(x1:0, y1:0, x2:0, y2:1,
+                    stop:0 #ffffff, stop:1 #e4e6ee);
+                color: #0a0c14;
+                border: 1px solid rgba(255, 255, 255, 0.9);
+                border-radius: 24px;
+                font-family: {ICON_FONT};
+                font-size: 18px;
             }}
             QPushButton#play_btn:hover {{
-                background-color: #f0f0f0;
+                background-color: #ffffff;
             }}
-            QPushButton {{
-                background-color: transparent;
-                color: {SPOTIFY_TEXT_SUB};
-                border: none;
-                border-radius: 14px;
+            QPushButton#play_btn:pressed {{
+                background-color: #d6d8e0;
+            }}
+            QPushButton#pill_btn {{
+                background-color: {GLASS_FILL};
+                color: {GLASS_TEXT};
+                border: 1px solid rgba(255, 255, 255, 0.14);
+                border-radius: 15px;
                 font-size: 12px;
+                font-weight: 600;
             }}
-            QPushButton:hover {{
-                color: {SPOTIFY_TEXT};
-                background-color: rgba(255, 255, 255, 0.08);
+            QPushButton#pill_btn:hover {{
+                background-color: {GLASS_FILL_HOVER};
             }}
             QProgressBar {{
                 background-color: transparent;
@@ -301,26 +324,29 @@ class ControlsWidget(QWidget):
                 max-height: 2px;
             }}
             QProgressBar::chunk {{
-                background-color: {SPOTIFY_GREEN};
+                background-color: {GLASS_ACCENT};
             }}
             QSlider::groove:horizontal {{
-                height: 4px;
-                background: rgba(255, 255, 255, 0.2);
-                border-radius: 2px;
-            }}
-            QSlider::handle:horizontal {{
-                background: {SPOTIFY_TEXT};
-                width: 12px;
-                height: 12px;
-                margin: -4px 0;
-                border-radius: 6px;
-            }}
-            QSlider::handle:horizontal:hover {{
-                background: {SPOTIFY_GREEN_HOVER};
+                height: 6px;
+                background: rgba(255, 255, 255, 0.16);
+                border-radius: 3px;
             }}
             QSlider::sub-page:horizontal {{
-                background: {SPOTIFY_TEXT};
-                border-radius: 2px;
+                background: {GLASS_TEXT};
+                border-radius: 3px;
+            }}
+            QSlider::handle:horizontal {{
+                background: {GLASS_TEXT};
+                width: 14px;
+                height: 14px;
+                margin: -4px 0;
+                border-radius: 7px;
+            }}
+            QSlider::handle:horizontal:hover {{
+                width: 16px;
+                height: 16px;
+                margin: -5px 0;
+                border-radius: 8px;
             }}
         """
 
@@ -347,6 +373,12 @@ class ControlsWidget(QWidget):
         self.auto_hide_timer.stop()
 
     def set_fullscreen_mode(self, is_fullscreen: bool):
+        self.fullscreen_button.setText(
+            Icons.EXIT_FULLSCREEN if is_fullscreen else Icons.FULLSCREEN
+        )
+        self.fullscreen_button.setToolTip(
+            "Выйти из полного экрана (Esc)" if is_fullscreen else "Полный экран (F)"
+        )
         if is_fullscreen:
             self.show_controls()
             self.start_hide_timer()

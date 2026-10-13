@@ -3,7 +3,7 @@ from pathlib import Path
 from PyQt6.QtWidgets import QListWidget, QListWidgetItem, QWidget, QLabel, QVBoxLayout
 from PyQt6.QtCore import Qt, pyqtSignal
 
-from ui.styles import SPOTIFY_TEXT_SUB, SPOTIFY_TEXT, SPOTIFY_GREEN, SPOTIFY_DARK
+from ui.styles import GLASS_TEXT_SUB, GLASS_TEXT, GLASS_ACCENT_SOFT
 
 
 class PlaylistWidget(QListWidget):
@@ -21,23 +21,23 @@ class PlaylistWidget(QListWidget):
             QListWidget {{
                 background-color: transparent;
                 border: none;
-                color: {SPOTIFY_TEXT_SUB};
-                font-size: 14px;
+                color: {GLASS_TEXT_SUB};
+                font-size: 13px;
                 outline: none;
-                padding: 4px 0px;
+                padding: 2px 0px;
             }}
             QListWidget::item {{
-                padding: 8px 12px;
-                border-radius: 4px;
-                margin: 1px 0px;
+                padding: 10px 12px;
+                border-radius: 12px;
+                margin: 2px 0px;
             }}
             QListWidget::item:hover {{
-                color: {SPOTIFY_TEXT};
-                background-color: rgba(255, 255, 255, 0.05);
+                color: {GLASS_TEXT};
+                background-color: rgba(255, 255, 255, 0.07);
             }}
             QListWidget::item:selected {{
-                background-color: rgba(255, 255, 255, 0.08);
-                color: {SPOTIFY_GREEN};
+                background-color: {GLASS_ACCENT_SOFT};
+                color: {GLASS_TEXT};
                 font-weight: 600;
             }}
         """)
@@ -52,7 +52,7 @@ class PlaylistWidget(QListWidget):
         if len(video_name) > 32:
             video_name = video_name[:29] + "..."
 
-        item = QListWidgetItem(f"🎬  {video_name}")
+        item = QListWidgetItem(video_name)
         item.setData(Qt.ItemDataRole.UserRole, file_path)
         item.setToolTip(file_path)
         self.addItem(item)
@@ -120,11 +120,11 @@ class PlaylistHeaderWidget(QWidget):
     def __init__(self):
         super().__init__()
         self.setFixedHeight(48)
-        self.setStyleSheet(f"""
-            QWidget {{
-                background-color: {SPOTIFY_DARK};
+        self.setStyleSheet("""
+            QWidget {
+                background-color: transparent;
                 border-bottom: 1px solid rgba(255, 255, 255, 0.05);
-            }}
+            }
         """)
         
         layout = QVBoxLayout()
@@ -133,14 +133,14 @@ class PlaylistHeaderWidget(QWidget):
         
         self.title_label = QLabel("Плейлист")
         self.title_label.setStyleSheet(f"""
-            color: {SPOTIFY_TEXT};
+            color: {GLASS_TEXT};
             font-size: 14px;
             font-weight: 700;
         """)
         
         self.count_label = QLabel("0 видео")
         self.count_label.setStyleSheet(f"""
-            color: {SPOTIFY_TEXT_SUB};
+            color: {GLASS_TEXT_SUB};
             font-size: 11px;
         """)
         
