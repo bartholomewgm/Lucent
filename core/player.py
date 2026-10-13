@@ -3,6 +3,8 @@
 Обёртка над QMediaPlayer
 """
 
+from pathlib import Path
+
 from PyQt6.QtCore import QUrl, pyqtSignal, QObject
 from PyQt6.QtMultimedia import QMediaPlayer, QAudioOutput
 from PyQt6.QtMultimediaWidgets import QVideoWidget
@@ -44,11 +46,10 @@ class VideoPlayer(QObject):
     def load_video(self, file_path: str) -> bool:
         """Загружает видео файл"""
         try:
-            url = QUrl.fromLocalFile(file_path)
-            if not url.isLocalFile():
+            if not Path(file_path).is_file():
                 self.error_occurred.emit(f"Файл не найден: {file_path}")
                 return False
-            self.player.setSource(url)
+            self.player.setSource(QUrl.fromLocalFile(file_path))
             return True
         except Exception as e:
             self.error_occurred.emit(f"Ошибка загрузки: {str(e)}")
