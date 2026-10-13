@@ -135,6 +135,9 @@ class MainWindow(QMainWindow):
         self.controls.prev_button.clicked.connect(self.prev_video)
         self.controls.play_button.clicked.connect(self.play_pause)
         self.controls.next_button.clicked.connect(self.next_video)
+        skip_ms = self.controls.SKIP_SECONDS * 1000
+        self.controls.rewind_button.clicked.connect(lambda: self.player.backward(skip_ms))
+        self.controls.skip_button.clicked.connect(lambda: self.player.forward(skip_ms))
         self.controls.fullscreen_button.clicked.connect(self.toggle_fullscreen)
 
         # Ползунки

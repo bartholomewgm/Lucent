@@ -42,6 +42,7 @@ class Icons:
     EXIT_FULLSCREEN = "\uE73F"
     ADD = "\uE710"
     VIDEO = "\uE714"
+    CIRCLE_ARROW = "\uE72C"  # круговая стрелка по часовой
 
 
 STYLE = f"""

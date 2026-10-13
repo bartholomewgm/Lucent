@@ -6,8 +6,8 @@ from PyQt6.QtWidgets import (
     QVBoxLayout,
     QProgressBar
 )
-from PyQt6.QtCore import Qt, QTimer, pyqtSignal
-from PyQt6.QtGui import QFont
+from PyQt6.QtCore import Qt, QTimer, QRectF, pyqtSignal
+from PyQt6.QtGui import QFont, QPainter, QColor
 from pathlib import Path
 
 from ui.cover_art import CoverArtWidget
@@ -24,10 +24,51 @@ from ui.styles import (
 )
 
 
+class SkipButton(QPushButton):
+    """Кнопка перемотки в стиле iOS: круговая стрелка с числом секунд внутри"""
+
+    def __init__(self, seconds: int, forward: bool):
+        super().__init__()
+        self.seconds = seconds
+        self.forward = forward
+        self.setFixedSize(40, 40)
+        self.setCursor(Qt.CursorShape.PointingHandCursor)
+        self.setFocusPolicy(Qt.FocusPolicy.NoFocus)
+        self.setObjectName("control_btn")
+        direction = "Вперёд" if forward else "Назад"
+        self.setToolTip(f"{direction} на {seconds} сек")
+
+    def paintEvent(self, event):
+        super().paintEvent(event)  # фон и подсветка из стилей
+        p = QPainter(self)
+        p.setRenderHint(QPainter.RenderHint.Antialiasing)
+        p.setRenderHint(QPainter.RenderHint.TextAntialiasing)
+        p.setPen(QColor(GLASS_TEXT))
+        rect = QRectF(self.rect())
+
+        # Стрелка: для «назад» отражаем по горизонтали
+        p.save()
+        if not self.forward:
+            p.translate(rect.width(), 0)
+            p.scale(-1, 1)
+        icon_font = QFont(ICON_FONT.split(",")[0].strip("' "))
+        icon_font.setPixelSize(26)
+        p.setFont(icon_font)
+        p.drawText(rect, Qt.AlignmentFlag.AlignCenter, Icons.CIRCLE_ARROW)
+        p.restore()
+
+        number_font = QFont(self.font())
+        number_font.setPixelSize(9)
+        number_font.setWeight(QFont.Weight.Bold)
+        p.setFont(number_font)
+        p.drawText(rect.adjusted(0, 1, 0, 1), Qt.AlignmentFlag.AlignCenter, str(self.seconds))
+
+
 class ControlsWidget(GlassPanel):
     """Нижняя плавающая стеклянная панель плеера"""
 
     speed_changed = pyqtSignal(str)
+    SKIP_SECONDS = 10
     SPEEDS = ["0.5x", "0.75x", "1.0x", "1.25x", "1.5x", "2.0x"]
 
     def __init__(self):
@@ -93,12 +134,16 @@ class ControlsWidget(GlassPanel):
         self.play_button = self._make_play_btn()
         self.next_button = self._make_control_btn(Icons.NEXT, 40)
         self.next_button.setToolTip("Следующее (N)")
+        self.rewind_button = SkipButton(self.SKIP_SECONDS, forward=False)
+        self.skip_button = SkipButton(self.SKIP_SECONDS, forward=True)
 
         center_layout = QHBoxLayout()
         center_layout.setSpacing(14)
         center_layout.setAlignment(Qt.AlignmentFlag.AlignCenter)
         center_layout.addWidget(self.prev_button)
+        center_layout.addWidget(self.rewind_button)
         center_layout.addWidget(self.play_button)
+        center_layout.addWidget(self.skip_button)
         center_layout.addWidget(self.next_button)
 
         # ----- 4. ПРАВАЯ ЧАСТЬ: время, скорость, громкость -----
