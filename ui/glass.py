@@ -3,11 +3,16 @@
 фон-«обои» с цветными пятнами и полупрозрачные панели с бликом по краю
 """
 
-from PyQt6.QtWidgets import QWidget, QMenu
-from PyQt6.QtCore import Qt, QRectF, QPointF
+from PyQt6.QtCore import QPointF, QRectF, Qt
 from PyQt6.QtGui import (
-    QPainter, QColor, QLinearGradient, QRadialGradient, QPainterPath, QPen
+    QColor,
+    QLinearGradient,
+    QPainter,
+    QPainterPath,
+    QPen,
+    QRadialGradient,
 )
+from PyQt6.QtWidgets import QMenu, QWidget
 
 from ui.styles import GLASS_BASE, GLASS_BLOB_1, GLASS_BLOB_2, GLASS_BLOB_3, GLASS_RADIUS
 

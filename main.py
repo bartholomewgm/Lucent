@@ -3,11 +3,13 @@
 """
 
 import os
+
 # КРИТИЧНО: выбор бэкенда ДО импорта PyQt6
 os.environ["QT_MEDIA_BACKEND"] = "ffmpeg"
 
 import sys
 import traceback
+
 from PyQt6.QtWidgets import QApplication, QMessageBox
 from ui.main_window import MainWindow
 
