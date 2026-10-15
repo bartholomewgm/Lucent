@@ -1,18 +1,20 @@
 from pathlib import Path
 
 from PyQt6.QtWidgets import (
+    QApplication,
     QMainWindow,
     QWidget,
     QVBoxLayout,
     QFileDialog,
     QMessageBox,
-    QSplitter
+    QHBoxLayout,
 )
-from PyQt6.QtCore import Qt, QTimer, QEvent
-from PyQt6.QtGui import QShortcut, QKeySequence, QDragEnterEvent, QDropEvent
+from PyQt6.QtCore import Qt, QTimer, QElapsedTimer
+from PyQt6.QtGui import QShortcut, QKeySequence, QDragEnterEvent, QDropEvent, QCursor
 
-from ui.sidebar import SidebarWidget
+from ui.sidebar import SidebarWidget, SidebarDrawer
 from ui.controls import ControlsWidget
+from ui.fullscreen_controls import FullscreenControls
 from ui.glass import GlassBackground
 from ui.styles import STYLE, GLASS_GAP, GLASS_RADIUS
 
@@ -24,6 +26,7 @@ class MainWindow(QMainWindow):
     """Главное окно видеоплеера"""
 
     VIDEO_EXTENSIONS = {".mp4", ".avi", ".mkv", ".mov", ".wmv", ".flv", ".webm", ".m4v"}
+    FULLSCREEN_IDLE_MS = 3000  # через сколько бездействия прятать курсор и панель
 
     def __init__(self):
         super().__init__()
@@ -39,7 +42,9 @@ class MainWindow(QMainWindow):
         self.player = VideoPlayer()
         self.history = HistoryManager()
         self.sidebar = SidebarWidget()
+        self.drawer = SidebarDrawer(self.sidebar, GLASS_GAP)
         self.controls = ControlsWidget()
+        self.fs_controls = FullscreenControls(self, ControlsWidget.SKIP_SECONDS)
         self.playlist = self.sidebar.playlist
 
         self.setup_ui()
@@ -48,10 +53,15 @@ class MainWindow(QMainWindow):
 
         self.setStyleSheet(STYLE)
 
-        self.cursor_timer = None
-        self.controls_hide_timer = None
-        self._fullscreen_hide_delay = 2000
-        self._controls_zone_height = 120
+        # Полноэкранный режим: опрашиваем позицию курсора, а не события мыши —
+        # так смена раскладки и всплывающая панель не дают ложных «движений»
+        self._idle_timer = QTimer(self)
+        self._idle_timer.setInterval(100)
+        self._idle_timer.timeout.connect(self._check_fullscreen_idle)
+        self._idle_clock = QElapsedTimer()
+        self._last_cursor_pos = None
+        self._cursor_hidden = False
+
         self.autosave_timer = QTimer(self)
         self.autosave_timer.timeout.connect(self._autosave_position)
         self.autosave_timer.start(15000)
@@ -69,37 +79,25 @@ class MainWindow(QMainWindow):
         video_layout.addWidget(self.player.video_widget)
         self.video_container.setLayout(video_layout)
 
-        # Разделитель: сайдбар | видео
-        self.splitter = QSplitter(Qt.Orientation.Horizontal)
-        self.splitter.addWidget(self.sidebar)
-        self.splitter.addWidget(self.video_container)
-        self.splitter.setSizes([280, self.width() - 280])
-        self.splitter.setHandleWidth(GLASS_GAP)
-        self.splitter.setChildrenCollapsible(False)
-        self.splitter.setStretchFactor(0, 0)
-        self.splitter.setStretchFactor(1, 1)
-        self.splitter.setStyleSheet("""
-            QSplitter::handle {
-                background-color: transparent;
-            }
-        """)
+        # Выдвижной плейлист | видео (отступ между ними входит в ширину drawer)
+        content = QWidget()
+        content_layout = QHBoxLayout(content)
+        content_layout.setContentsMargins(0, 0, 0, 0)
+        content_layout.setSpacing(0)
+        content_layout.addWidget(self.drawer)
+        content_layout.addWidget(self.video_container, stretch=1)
 
         root = GlassBackground()
         self.root = root
         root_layout = QVBoxLayout()
         root_layout.setContentsMargins(GLASS_GAP, GLASS_GAP, GLASS_GAP, GLASS_GAP)
         root_layout.setSpacing(GLASS_GAP)
-        root_layout.addWidget(self.splitter, stretch=1)
+        root_layout.addWidget(content, stretch=1)
         root_layout.addWidget(self.controls)
         root.setLayout(root_layout)
 
         self.setCentralWidget(root)
 
-        self.player.video_widget.setMouseTracking(True)
-        self.video_container.setMouseTracking(True)
-        self.player.video_widget.installEventFilter(self)
-        self.video_container.installEventFilter(self)
-        self.controls.installEventFilter(self)
         self.player.video_widget.mouseDoubleClickEvent = self._on_video_double_click
 
     def _set_video_card_style(self, rounded: bool):
@@ -123,7 +121,6 @@ class MainWindow(QMainWindow):
         self.root.layout().setSpacing(gap)
         self.root.plain = not glass
         self.root.update()
-        self.splitter.setHandleWidth(gap)
         self.video_container.layout().setContentsMargins(*([8] * 4 if glass else [0] * 4))
         self._set_video_card_style(rounded=glass)
 
@@ -139,6 +136,21 @@ class MainWindow(QMainWindow):
         self.controls.rewind_button.clicked.connect(lambda: self.player.backward(skip_ms))
         self.controls.skip_button.clicked.connect(lambda: self.player.forward(skip_ms))
         self.controls.fullscreen_button.clicked.connect(self.toggle_fullscreen)
+        self.controls.playlist_button.clicked.connect(self.drawer.toggle)
+
+        # Полноэкранная панель
+        fs = self.fs_controls
+        fs.prev_button.clicked.connect(self.prev_video)
+        fs.rewind_button.clicked.connect(lambda: self.player.backward(skip_ms))
+        fs.play_button.clicked.connect(self.play_pause)
+        fs.skip_button.clicked.connect(lambda: self.player.forward(skip_ms))
+        fs.next_button.clicked.connect(self.next_video)
+        fs.mute_button.clicked.connect(self.controls.toggle_mute)
+        fs.exit_button.clicked.connect(self.exit_fullscreen)
+        fs.position_slider.sliderMoved.connect(self.player.set_position)
+        self.controls.muted_changed.connect(fs.set_muted)
+        fs.volume_slider.valueChanged.connect(self.controls.volume_slider.setValue)
+        self.controls.volume_slider.valueChanged.connect(fs.set_volume)
 
         # Ползунки
         self.controls.volume_slider.valueChanged.connect(self._on_volume_changed)
@@ -183,6 +195,7 @@ class MainWindow(QMainWindow):
         )
         QShortcut(QKeySequence("Ctrl+Q"), self).activated.connect(self.close)
         QShortcut(QKeySequence("F5"), self).activated.connect(self.reload_video)
+        QShortcut(QKeySequence("Ctrl+L"), self).activated.connect(self.drawer.toggle)
 
     # --- Drag & Drop ---
 
@@ -213,37 +226,6 @@ class MainWindow(QMainWindow):
         v = max(0, self.controls.volume_slider.value() - 5)
         self.controls.volume_slider.setValue(v)
 
-    # --- Event Filter для полноэкранного режима ---
-
-    def eventFilter(self, obj, event):
-        if not self.isFullScreen():
-            return super().eventFilter(obj, event)
-
-        if event.type() == QEvent.Type.MouseMove:
-            if obj in (self.player.video_widget, self.video_container):
-                window_pos = self.mapFromGlobal(event.globalPosition().toPoint())
-                self._handle_fullscreen_mouse(window_pos)
-            elif obj == self.controls:
-                self.setCursor(Qt.CursorShape.ArrowCursor)
-                self.start_cursor_timer()
-                self.show_controls_in_fullscreen()
-                if self.controls_hide_timer:
-                    self.controls_hide_timer.stop()
-
-        elif event.type() == QEvent.Type.Leave and obj == self.controls:
-            self.start_controls_hide_timer()
-
-        return super().eventFilter(obj, event)
-
-    def _handle_fullscreen_mouse(self, window_pos):
-        self.setCursor(Qt.CursorShape.ArrowCursor)
-        self.start_cursor_timer()
-
-        if window_pos.y() >= self.height() - self._controls_zone_height:
-            self.show_controls_in_fullscreen()
-        elif self.controls.isVisible():
-            self.start_controls_hide_timer()
-
     def _on_video_double_click(self, event):
         self.toggle_fullscreen()
 
@@ -251,69 +233,54 @@ class MainWindow(QMainWindow):
 
     def toggle_fullscreen(self):
         if self.isFullScreen():
+            self._idle_timer.stop()
+            self.fs_controls.hide_now()
+            self._show_cursor()
             self.showNormal()
             self._set_glass_layout(True)
-            self.sidebar.setVisible(True)
+            self.drawer.setVisible(True)
             self.controls.setVisible(True)
-            self.controls.set_fullscreen_mode(False)
-            self.setCursor(Qt.CursorShape.ArrowCursor)
-            self._stop_fullscreen_timers()
-            self.splitter.setSizes([280, self.width() - 280])
         else:
             self.showFullScreen()
             self._set_glass_layout(False)
-            self.sidebar.setVisible(False)
-            self.controls.setVisible(True)
-            self.controls.set_fullscreen_mode(True)
-            self.setCursor(Qt.CursorShape.ArrowCursor)
-            self.start_cursor_timer()
-            self.start_controls_hide_timer()
+            self.drawer.setVisible(False)
+            self.controls.setVisible(False)
+            self._last_cursor_pos = QCursor.pos()
+            self._idle_clock.start()
+            self.fs_controls.show_animated()
+            self._idle_timer.start()
 
     def exit_fullscreen(self):
         if self.isFullScreen():
             self.toggle_fullscreen()
 
-    def _stop_fullscreen_timers(self):
-        if self.cursor_timer:
-            self.cursor_timer.stop()
-            self.cursor_timer = None
-        if self.controls_hide_timer:
-            self.controls_hide_timer.stop()
-            self.controls_hide_timer = None
+    def _check_fullscreen_idle(self):
+        pos = QCursor.pos()
+        if pos != self._last_cursor_pos:
+            self._last_cursor_pos = pos
+            self._idle_clock.restart()
+            self._show_cursor()
+            self.fs_controls.show_animated()
+            return
 
-    def start_cursor_timer(self):
-        if self.cursor_timer:
-            self.cursor_timer.stop()
-        self.cursor_timer = QTimer()
-        self.cursor_timer.setSingleShot(True)
-        self.cursor_timer.timeout.connect(self.hide_cursor)
-        self.cursor_timer.start(self._fullscreen_hide_delay)
+        # Пока курсор над панелью — не прячем её
+        if self.fs_controls.isVisible() and self.fs_controls.geometry().contains(pos):
+            self._idle_clock.restart()
+            return
 
-    def hide_cursor(self):
-        if self.isFullScreen():
-            self.setCursor(Qt.CursorShape.BlankCursor)
+        if self._idle_clock.elapsed() >= self.FULLSCREEN_IDLE_MS:
+            self._hide_cursor()
+            self.fs_controls.hide_animated()
 
-    def start_controls_hide_timer(self):
-        if self.controls_hide_timer:
-            self.controls_hide_timer.stop()
-        self.controls_hide_timer = QTimer()
-        self.controls_hide_timer.setSingleShot(True)
-        self.controls_hide_timer.timeout.connect(self.hide_controls_in_fullscreen)
-        self.controls_hide_timer.start(self._fullscreen_hide_delay)
+    def _hide_cursor(self):
+        if not self._cursor_hidden:
+            QApplication.setOverrideCursor(Qt.CursorShape.BlankCursor)
+            self._cursor_hidden = True
 
-    def hide_controls_in_fullscreen(self):
-        if self.isFullScreen():
-            self.controls.setVisible(False)
-
-    def show_controls_in_fullscreen(self):
-        if self.isFullScreen():
-            self.controls.setVisible(True)
-            self.start_controls_hide_timer()
-
-    def mouseMoveEvent(self, event):
-        if self.isFullScreen():
-            self._handle_fullscreen_mouse(event.pos())
-        super().mouseMoveEvent(event)
+    def _show_cursor(self):
+        if self._cursor_hidden:
+            QApplication.restoreOverrideCursor()
+            self._cursor_hidden = False
 
     def keyPressEvent(self, event):
         if event.key() in (Qt.Key.Key_F11, Qt.Key.Key_F):
@@ -349,7 +316,7 @@ class MainWindow(QMainWindow):
             self.playlist.select_video(file_path)
 
             self.player.play()
-            self.controls.set_play_button_state(True)
+            self._set_play_state(True)
         else:
             QMessageBox.warning(self, "Ошибка", f"Не удалось загрузить видео:\n{file_path}")
 
@@ -368,10 +335,10 @@ class MainWindow(QMainWindow):
     def play_pause(self):
         if self.player.is_playing():
             self.player.pause()
-            self.controls.set_play_button_state(False)
+            self._set_play_state(False)
         else:
             self.player.play()
-            self.controls.set_play_button_state(True)
+            self._set_play_state(True)
 
     def next_video(self):
         file_path = self.playlist.next_video()
@@ -395,9 +362,11 @@ class MainWindow(QMainWindow):
         self.controls.position_slider.setValue(position)
         self.controls.position_slider.blockSignals(False)
         self.controls.update_time_display(position, self.player.duration())
+        self.fs_controls.set_position(position)
 
     def update_duration(self, duration: int):
         self.controls.position_slider.setRange(0, max(duration, 0))
+        self.fs_controls.set_duration(duration)
         if self.current_file_path and duration > 0:
             self.controls.update_track_info(self.current_file_path, duration)
             if self._pending_position > 0:
@@ -405,7 +374,11 @@ class MainWindow(QMainWindow):
                 self._pending_position = 0
 
     def on_media_state_changed(self, is_playing: bool):
+        self._set_play_state(is_playing)
+
+    def _set_play_state(self, is_playing: bool):
         self.controls.set_play_button_state(is_playing)
+        self.fs_controls.set_play_button_state(is_playing)
 
     def handle_player_error(self, error_message: str):
         QMessageBox.critical(self, "Ошибка плеера", error_message)
@@ -416,7 +389,9 @@ class MainWindow(QMainWindow):
 
     def closeEvent(self, event):
         self.autosave_timer.stop()
-        self._stop_fullscreen_timers()
+        self._idle_timer.stop()
+        self.fs_controls.hide_now()
+        self._show_cursor()
 
         if self.current_file_path:
             self.history.save_video(self.current_file_path, self.player.get_position())

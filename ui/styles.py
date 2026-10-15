@@ -41,6 +41,7 @@ class Icons:
     FULLSCREEN = "\uE740"
     EXIT_FULLSCREEN = "\uE73F"
     ADD = "\uE710"
+    MENU = "\uE700"  # три горизонтальные полоски
     VIDEO = "\uE714"
     CIRCLE_ARROW = "\uE72C"  # круговая стрелка по часовой
 

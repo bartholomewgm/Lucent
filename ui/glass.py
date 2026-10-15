@@ -58,9 +58,10 @@ class GlassBackground(QWidget):
 class GlassPanel(QWidget):
     """Полупрозрачная панель: матовая заливка, светлый кант сверху, мягкая тень"""
 
-    def __init__(self, parent=None, radius: int = GLASS_RADIUS):
+    def __init__(self, parent=None, radius: int = GLASS_RADIUS, tint_alpha: int = 120):
         super().__init__(parent)
         self.radius = radius
+        self.tint_alpha = tint_alpha  # насколько стекло затемняет то, что под ним
 
     def paintEvent(self, event):
         p = QPainter(self)
@@ -74,7 +75,7 @@ class GlassPanel(QWidget):
         fill.setColorAt(0.0, QColor(255, 255, 255, 30))
         fill.setColorAt(0.5, QColor(255, 255, 255, 16))
         fill.setColorAt(1.0, QColor(255, 255, 255, 10))
-        p.fillPath(path, QColor(12, 14, 24, 120))
+        p.fillPath(path, QColor(12, 14, 24, self.tint_alpha))
         p.fillPath(path, fill)
 
         # Кант: яркий блик сверху, затухающий книзу
