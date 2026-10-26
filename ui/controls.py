@@ -1,16 +1,21 @@
+import math
+from pathlib import Path
+
 from PyQt6.QtWidgets import (
     QPushButton,
     QLabel,
     QSlider,
     QHBoxLayout,
     QVBoxLayout,
-    QProgressBar
+    QProgressBar,
+    QStyle,
+    QStyleOptionSlider,
 )
-from PyQt6.QtCore import Qt, QRectF, pyqtSignal
-from PyQt6.QtGui import QFont, QPainter, QColor
-from pathlib import Path
+from PyQt6.QtCore import Qt, QPointF, QRectF, QElapsedTimer, pyqtSignal
+from PyQt6.QtGui import QFont, QPainter, QColor, QPen
 
 from ui.cover_art import CoverArtWidget
+from ui.video_frame import ASPECT_MODES
 from ui.glass import GlassPanel, make_glass_menu
 from ui.styles import (
     GLASS_FILL,
@@ -62,8 +67,8 @@ def control_styles() -> str:
     """Общие стили кнопок и ползунков для нижней и полноэкранной панелей"""
     return f"""
         QLabel#time_label {{
-            color: {GLASS_TEXT_SUB};
-            font-size: 11px;
+            color: {GLASS_TEXT};
+            font-size: 13px;
         }}
         QPushButton#icon_btn, QPushButton#control_btn {{
             background-color: transparent;
@@ -103,7 +108,7 @@ def control_styles() -> str:
         QPushButton#pill_btn {{
             background-color: {GLASS_FILL};
             color: {GLASS_TEXT};
-            border: 1px solid rgba(255, 255, 255, 0.14);
+            border: none;
             border-radius: 15px;
             font-size: 12px;
             font-weight: 600;
@@ -144,6 +149,81 @@ def control_styles() -> str:
     """
 
 
+class SeekSlider(QSlider):
+    """
+    Полоса перемотки видео.
+    Клик в любое место сразу ставит туда ручку (её можно тут же тянуть дальше),
+    а перемотка выполняется один раз — когда кнопку мыши отпустили.
+    Пока ручку держат, позиция от плеера её не трогает.
+    """
+
+    seek_requested = pyqtSignal(int)
+    # Сколько ждать, пока плеер «догонит» новую позицию после перемотки:
+    # до этого старые значения позиции не возвращают ручку назад
+    SETTLE_MS = 800
+    SETTLE_TOLERANCE_MS = 1500
+
+    def __init__(self):
+        super().__init__(Qt.Orientation.Horizontal)
+        self.setFocusPolicy(Qt.FocusPolicy.NoFocus)  # стрелки — горячие клавиши окна
+        self.setCursor(Qt.CursorShape.PointingHandCursor)
+        self._seek_target = None
+        self._seek_clock = QElapsedTimer()
+
+    def _value_at(self, x: float) -> int:
+        opt = QStyleOptionSlider()
+        self.initStyleOption(opt)
+        style = self.style()
+        groove = style.subControlRect(
+            QStyle.ComplexControl.CC_Slider, opt, QStyle.SubControl.SC_SliderGroove, self)
+        handle = style.subControlRect(
+            QStyle.ComplexControl.CC_Slider, opt, QStyle.SubControl.SC_SliderHandle, self)
+        span = max(groove.width() - handle.width(), 1)
+        pos = round(x - groove.x() - handle.width() / 2)
+        return QStyle.sliderValueFromPosition(
+            self.minimum(), self.maximum(), max(0, min(pos, span)), span)
+
+    def mousePressEvent(self, event):
+        if event.button() != Qt.MouseButton.LeftButton or self.maximum() <= self.minimum():
+            return super().mousePressEvent(event)
+        self.setSliderDown(True)
+        self.setValue(self._value_at(event.position().x()))
+        event.accept()
+
+    def mouseMoveEvent(self, event):
+        if self.isSliderDown():
+            self.setValue(self._value_at(event.position().x()))
+            event.accept()
+        else:
+            super().mouseMoveEvent(event)
+
+    def mouseReleaseEvent(self, event):
+        if event.button() == Qt.MouseButton.LeftButton and self.isSliderDown():
+            self.setSliderDown(False)
+            self._seek_target = self.value()
+            self._seek_clock.start()
+            self.seek_requested.emit(self.value())
+            event.accept()
+        else:
+            super().mouseReleaseEvent(event)
+
+    def wheelEvent(self, event):
+        event.ignore()  # колесо по полосе не должно сдвигать её на миллисекунды
+
+    def sync(self, position_ms: int):
+        """Показать позицию, пришедшую от плеера"""
+        if self.isSliderDown():
+            return
+        if self._seek_target is not None:
+            caught_up = abs(position_ms - self._seek_target) < self.SETTLE_TOLERANCE_MS
+            if not caught_up and self._seek_clock.elapsed() < self.SETTLE_MS:
+                return
+            self._seek_target = None
+        self.blockSignals(True)
+        self.setValue(position_ms)
+        self.blockSignals(False)
+
+
 class SkipButton(QPushButton):
     """Кнопка перемотки в стиле iOS: круговая стрелка с числом секунд внутри"""
 
@@ -155,8 +235,13 @@ class SkipButton(QPushButton):
         self.setCursor(Qt.CursorShape.PointingHandCursor)
         self.setFocusPolicy(Qt.FocusPolicy.NoFocus)
         self.setObjectName("control_btn")
-        direction = "Вперёд" if forward else "Назад"
+        self.set_seconds(seconds)
+
+    def set_seconds(self, seconds: int):
+        self.seconds = seconds
+        direction = "Вперёд" if self.forward else "Назад"
         self.setToolTip(f"{direction} на {seconds} сек")
+        self.update()
 
     def paintEvent(self, event):
         super().paintEvent(event)  # фон и подсветка из стилей
@@ -184,10 +269,63 @@ class SkipButton(QPushButton):
         p.drawText(rect.adjusted(0, 1, 0, 1), Qt.AlignmentFlag.AlignCenter, str(self.seconds))
 
 
+class PlaylistToggleButton(QPushButton):
+    """
+    Кнопка «☰» плейлиста. Пока панель выезжает или прячется, полоски делают
+    пол-оборота (при открытии — по часовой, при закрытии — обратно), на середине
+    сжимаются к центру «вихрем» и снова раскрываются. Открытый плейлист
+    отмечен мягкой синей подсветкой за иконкой.
+    progress: 0 — плейлист скрыт, 1 — открыт.
+    """
+
+    SIZE = 36
+
+    def __init__(self):
+        super().__init__()
+        self._progress = 1.0
+        self.setFixedSize(self.SIZE, self.SIZE)
+        self.setCursor(Qt.CursorShape.PointingHandCursor)
+        self.setFocusPolicy(Qt.FocusPolicy.NoFocus)
+        self.setObjectName("icon_btn")  # фон при наведении — из общих стилей
+
+    def set_progress(self, value: float):
+        self._progress = value
+        self.update()
+
+    def paintEvent(self, event):
+        super().paintEvent(event)
+        t = self._progress
+        squeeze = math.sin(math.pi * t)  # 0 в начале и в конце, 1 — на середине
+        p = QPainter(self)
+        p.setRenderHint(QPainter.RenderHint.Antialiasing)
+
+        # Подсветка «открыто»: синий кружок проявляется вместе с панелью
+        if t > 0:
+            glow = QColor(GLASS_ACCENT)
+            glow.setAlphaF(0.35 * t)
+            p.setPen(Qt.PenStyle.NoPen)
+            p.setBrush(glow)
+            p.drawEllipse(QRectF(self.rect()).adjusted(1, 1, -1, -1))
+
+        pen = QPen(QColor(GLASS_TEXT), 2.0)
+        pen.setCapStyle(Qt.PenCapStyle.RoundCap)
+        p.setPen(pen)
+        p.translate(self.width() / 2, self.height() / 2)
+        p.rotate(180 * t)
+        p.scale(1 - 0.15 * squeeze, 1 - 0.15 * squeeze)
+
+        gap = 5.5 * (1 - 0.55 * squeeze)    # полоски сходятся к центру
+        outer = 8.0 * (1 - 0.25 * squeeze)  # крайние чуть короче
+        middle = 8.0 * (1 - 0.9 * squeeze)  # средняя почти в точку
+        for y, half in ((-gap, outer), (0.0, middle), (gap, outer)):
+            p.drawLine(QPointF(-half, y), QPointF(half, y))
+
+
 class ControlsWidget(GlassPanel):
     """Нижняя плавающая стеклянная панель плеера"""
 
     speed_changed = pyqtSignal(str)
+    aspect_changed = pyqtSignal(str)
     muted_changed = pyqtSignal(bool)
     SKIP_SECONDS = 10
     SPEEDS = ["0.5x", "0.75x", "1.0x", "1.25x", "1.5x", "2.0x"]
@@ -200,6 +338,7 @@ class ControlsWidget(GlassPanel):
 
         self.setup_ui()
         self.setup_speed_menu()
+        self.setup_aspect_menu()
         self.setStyleSheet(control_styles())
         self.setFixedHeight(112)
 
@@ -207,8 +346,8 @@ class ControlsWidget(GlassPanel):
         """Создаёт все элементы управления"""
 
         # ----- 1. ПРОГРЕСС СВЕРХУ -----
-        self.position_slider = QSlider(Qt.Orientation.Horizontal)
-        self.position_slider.setRange(0, 100)
+        self.position_slider = SeekSlider()
+        self.position_slider.setRange(0, 0)
         self.position_slider.setFixedHeight(16)
 
         self.loading_bar = QProgressBar()
@@ -218,8 +357,8 @@ class ControlsWidget(GlassPanel):
         self.loading_bar.setVisible(False)
 
         # ----- 2. ЛЕВАЯ ЧАСТЬ: обложка + информация о видео -----
-        self.playlist_button = make_icon_btn(Icons.MENU, 36)
-        self.playlist_button.setToolTip("Плейлист (Ctrl+L)")
+        self.playlist_button = PlaylistToggleButton()
+        self.playlist_button.setToolTip("Скрыть плейлист (Ctrl+L)")
 
         self.cover = CoverArtWidget(56)
 
@@ -269,7 +408,7 @@ class ControlsWidget(GlassPanel):
         # ----- 4. ПРАВАЯ ЧАСТЬ: время, скорость, громкость -----
         self.time_label = QLabel("0:00 / 0:00")
         self.time_label.setObjectName("time_label")
-        self.time_label.setMinimumWidth(90)
+        self.time_label.setMinimumWidth(120)
         self.time_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
 
         self.speed_button = QPushButton("1.0x")
@@ -278,6 +417,15 @@ class ControlsWidget(GlassPanel):
         self.speed_button.setCursor(Qt.CursorShape.PointingHandCursor)
         self.speed_button.setFocusPolicy(Qt.FocusPolicy.NoFocus)
         self.speed_button.setToolTip("Скорость ([ / ])")
+
+        self.aspect_button = QPushButton("Авто")
+        self.aspect_button.setObjectName("pill_btn")
+        self.aspect_button.setMinimumWidth(52)
+        self.aspect_button.setFixedHeight(30)
+        self.aspect_button.setCursor(Qt.CursorShape.PointingHandCursor)
+        self.aspect_button.setFocusPolicy(Qt.FocusPolicy.NoFocus)
+        self.aspect_button.setToolTip("Формат картинки (A)")
+        self.aspect_button.setStyleSheet("padding: 0 12px;")
 
         self.mute_button = make_icon_btn(Icons.VOLUME, 34)
         self.mute_button.setToolTip("Без звука (M)")
@@ -294,6 +442,7 @@ class ControlsWidget(GlassPanel):
         right_layout = QHBoxLayout()
         right_layout.setSpacing(8)
         right_layout.addWidget(self.time_label)
+        right_layout.addWidget(self.aspect_button)
         right_layout.addWidget(self.speed_button)
         right_layout.addWidget(self.mute_button)
         right_layout.addWidget(self.volume_slider)
@@ -324,6 +473,21 @@ class ControlsWidget(GlassPanel):
             action.triggered.connect(self._on_speed_selected)
         self.speed_button.clicked.connect(self._show_speed_menu)
         self.mute_button.clicked.connect(self.toggle_mute)
+
+    def setup_aspect_menu(self):
+        self.aspect_menu = make_glass_menu(self)
+        for label, value, _ in ASPECT_MODES:
+            action = self.aspect_menu.addAction(label)
+            action.triggered.connect(lambda _=False, v=value: self.aspect_changed.emit(v))
+        self.aspect_button.clicked.connect(self._show_aspect_menu)
+
+    def _show_aspect_menu(self):
+        pos = self.aspect_button.mapToGlobal(self.aspect_button.rect().bottomLeft())
+        self.aspect_menu.exec(pos)
+
+    def set_aspect_text(self, mode: str):
+        label = next((lbl for lbl, value, _ in ASPECT_MODES if value == mode), "Авто")
+        self.aspect_button.setText(label)
 
     def _show_speed_menu(self):
         pos = self.speed_button.mapToGlobal(self.speed_button.rect().bottomLeft())

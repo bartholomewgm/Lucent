@@ -14,6 +14,7 @@ from PyQt6.QtCore import (
 from PyQt6.QtWidgets import QHBoxLayout, QLabel, QSlider, QVBoxLayout, QWidget
 
 from ui.controls import (
+    SeekSlider,
     SkipButton,
     control_styles,
     format_time,
@@ -52,7 +53,7 @@ class FullscreenControls(GlassPanel):
         # Над видео иконки и время ярче, чем на нижней панели
         self.setStyleSheet(control_styles() + f"""
             QPushButton#icon_btn {{ color: {GLASS_TEXT}; font-size: 17px; border-radius: 18px; }}
-            QLabel#time_label {{ color: {GLASS_TEXT}; font-size: 12px; }}
+            QLabel#time_label {{ color: {GLASS_TEXT}; font-size: 14px; }}
         """)
         self._setup_animation()
 
@@ -69,8 +70,11 @@ class FullscreenControls(GlassPanel):
         time_row.addStretch()
         time_row.addWidget(self.total_label)
 
-        self.position_slider = QSlider(Qt.Orientation.Horizontal)
+        self.position_slider = SeekSlider()
         self.position_slider.setRange(0, 0)
+        self.position_slider.valueChanged.connect(
+            lambda value: self.current_label.setText(format_time(value))
+        )
         self.position_slider.setFixedHeight(16)
 
         # ----- Кнопки: звук и громкость | навигация | выход из полного экрана -----
@@ -144,11 +148,9 @@ class FullscreenControls(GlassPanel):
         self.total_label.setText(format_time(duration_ms))
 
     def set_position(self, position_ms: int):
-        if not self.position_slider.isSliderDown():
-            self.position_slider.blockSignals(True)
-            self.position_slider.setValue(position_ms)
-            self.position_slider.blockSignals(False)
-        self.current_label.setText(format_time(position_ms))
+        self.position_slider.sync(position_ms)
+        # Время — по ручке: пока её тянут, видно, куда будет перемотка
+        self.current_label.setText(format_time(self.position_slider.value()))
 
     # ----- Появление и скрытие -----
 

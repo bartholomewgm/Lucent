@@ -7,7 +7,6 @@ from pathlib import Path
 
 from PyQt6.QtCore import QUrl, pyqtSignal, QObject
 from PyQt6.QtMultimedia import QMediaPlayer, QAudioOutput
-from PyQt6.QtMultimediaWidgets import QVideoWidget
 
 
 class VideoPlayer(QObject):
@@ -18,6 +17,7 @@ class VideoPlayer(QObject):
     error_occurred = pyqtSignal(str)
     position_changed = pyqtSignal(int)
     duration_changed = pyqtSignal(int)
+    finished = pyqtSignal()  # видео доиграло до конца
 
     def __init__(self, parent=None):
         super().__init__(parent)
@@ -25,10 +25,7 @@ class VideoPlayer(QObject):
         # ========== ПЛЕЕР ==========
         self.player = QMediaPlayer()
         self.audio = QAudioOutput()
-        self.video_widget = QVideoWidget()
-
         self.player.setAudioOutput(self.audio)
-        self.player.setVideoOutput(self.video_widget)
 
         self.audio.setVolume(0.5)
         
@@ -40,6 +37,14 @@ class VideoPlayer(QObject):
         # НЕ ПОДКЛЮЧАЕМ НАПРЯМУЮ! Используем промежуточные методы
         self.player.positionChanged.connect(self._on_position_changed)
         self.player.durationChanged.connect(self._on_duration_changed)
+        self.player.mediaStatusChanged.connect(self._on_media_status_changed)
+
+    def set_video_output(self, output: QObject):
+        """Куда выводить картинку (VideoOutput из ui/video.qml)"""
+        self.player.setVideoOutput(output)
+
+    def video_sink(self):
+        return self.player.videoSink()
 
     # ========== ЗАГРУЗКА ==========
 
@@ -118,6 +123,10 @@ class VideoPlayer(QObject):
         """Прокси-обработчик для позиции"""
         self.position_changed.emit(position)
     
+    def _on_media_status_changed(self, status):
+        if status == QMediaPlayer.MediaStatus.EndOfMedia:
+            self.finished.emit()
+
     def _on_duration_changed(self, duration):
         """Прокси-обработчик для длительности"""
         self.duration_changed.emit(duration)

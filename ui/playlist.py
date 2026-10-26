@@ -3,6 +3,7 @@ from pathlib import Path
 from PyQt6.QtWidgets import QListWidget, QListWidgetItem, QWidget, QLabel, QVBoxLayout
 from PyQt6.QtCore import Qt, pyqtSignal
 
+from ui.glass import make_glass_menu
 from ui.styles import GLASS_TEXT_SUB, GLASS_TEXT, GLASS_ACCENT_SOFT
 
 
@@ -10,11 +11,14 @@ class PlaylistWidget(QListWidget):
     """Виджет плейлиста"""
 
     count_changed = pyqtSignal(int)
+    remove_requested = pyqtSignal(str)  # путь видео, которое просят убрать из очереди
 
     def __init__(self):
         super().__init__()
         self.video_files = []
         self.setMouseTracking(True)
+        self.setContextMenuPolicy(Qt.ContextMenuPolicy.CustomContextMenu)
+        self.customContextMenuRequested.connect(self._show_context_menu)
         self.setVerticalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
         self.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
         self.setStyleSheet(f"""
@@ -41,6 +45,22 @@ class PlaylistWidget(QListWidget):
                 font-weight: 600;
             }}
         """)
+
+    def _show_context_menu(self, pos):
+        item = self.itemAt(pos)
+        if item is None:
+            return
+        path = item.data(Qt.ItemDataRole.UserRole)
+        menu = make_glass_menu(self)
+        remove = menu.addAction("Удалить из очереди")
+        if menu.exec(self.viewport().mapToGlobal(pos)) == remove:
+            self.remove_requested.emit(str(path))
+
+    def request_remove_current(self):
+        """Удалить выделенное видео (клавиша Delete)"""
+        path = self.current_video()
+        if path:
+            self.remove_requested.emit(path)
 
     def add_video(self, file_path: str) -> int:
         file_path = str(Path(file_path).resolve())
@@ -103,6 +123,12 @@ class PlaylistWidget(QListWidget):
 
     def get_count(self) -> int:
         return len(self.video_files)
+
+    def remove_path(self, file_path: str) -> bool:
+        file_path = str(Path(file_path).resolve())
+        if file_path not in self.video_files:
+            return False
+        return self.remove_video(self.video_files.index(file_path))
 
     def remove_video(self, row: int) -> bool:
         if 0 <= row < self.count():

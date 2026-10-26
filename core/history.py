@@ -2,19 +2,24 @@
 Модуль управления историей просмотров (SQLite)
 """
 
+import os
 import sqlite3
+import sys
 from pathlib import Path
 
-# Путь к БД относительно корня проекта, а не CWD
-_PROJECT_ROOT = Path(__file__).resolve().parent.parent
-_DB_PATH = _PROJECT_ROOT / "database" / "history.db"
+if getattr(sys, "frozen", False):
+    # Собранное приложение: папка программы может быть только для чтения
+    _DB_PATH = Path(os.environ.get("APPDATA", Path.home())) / "Lucent" / "history.db"
+else:
+    # Запуск из исходников: БД в проекте (путь от корня проекта, а не от CWD)
+    _DB_PATH = Path(__file__).resolve().parent.parent / "database" / "history.db"
 
 
 class HistoryManager:
     """Управление историей просмотров"""
 
     def __init__(self):
-        _DB_PATH.parent.mkdir(exist_ok=True)
+        _DB_PATH.parent.mkdir(parents=True, exist_ok=True)
         self.connection = sqlite3.connect(str(_DB_PATH))
         self.cursor = self.connection.cursor()
         self.create_table()

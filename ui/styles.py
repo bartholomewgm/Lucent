@@ -41,8 +41,8 @@ class Icons:
     FULLSCREEN = "\uE740"
     EXIT_FULLSCREEN = "\uE73F"
     ADD = "\uE710"
-    MENU = "\uE700"  # три горизонтальные полоски
     VIDEO = "\uE714"
+    SETTINGS = "\uE713"
     CIRCLE_ARROW = "\uE72C"  # круговая стрелка по часовой
 
 
@@ -56,7 +56,7 @@ QWidget {{
 QMenu {{
     background-color: {GLASS_MENU};
     color: {GLASS_TEXT};
-    border: 1px solid {GLASS_STROKE};
+    border: none;
     border-radius: 14px;
     padding: 6px;
 }}

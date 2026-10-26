@@ -1,3 +1,5 @@
+import ctypes
+import sys
 from pathlib import Path
 
 from PyQt6.QtWidgets import (
@@ -10,28 +12,59 @@ from PyQt6.QtWidgets import (
     QHBoxLayout,
 )
 from PyQt6.QtCore import Qt, QTimer, QElapsedTimer
+from PyQt6.QtMultimedia import QMediaPlayer
 from PyQt6.QtGui import QShortcut, QKeySequence, QDragEnterEvent, QDropEvent, QCursor
 
 from ui.sidebar import SidebarWidget, SidebarDrawer
-from ui.controls import ControlsWidget
+from ui.controls import ControlsWidget, format_time
 from ui.fullscreen_controls import FullscreenControls
 from ui.glass import GlassBackground
+from ui.video_frame import VideoFrame, ASPECT_MODES
+from ui.window_frame import TitleBar, handle_native_event, restore_native_frame, IS_WINDOWS
+from ui.settings_dialog import SettingsDialog
 from ui.styles import STYLE, GLASS_GAP, GLASS_RADIUS
 
 from core.player import VideoPlayer
 from core.history import HistoryManager
+from core.settings import Settings
+from core.folder_playlist import FolderPlaylist
+from core.thumbnailer import Thumbnailer
+from core.ambient import AmbientColors
+
+
+# Windows 11 рисует вокруг окна рамку в 1 px — даже в полноэкранном режиме
+_DWMWA_BORDER_COLOR = 34
+_DWM_COLOR_NONE = 0xFFFFFFFE
+_DWM_COLOR_DEFAULT = 0xFFFFFFFF
+
+
+def set_window_border(widget, visible: bool):
+    """Показать или убрать системную рамку окна (только Windows 11, иначе ничего)"""
+    if sys.platform != "win32":
+        return
+    color = ctypes.c_uint(_DWM_COLOR_DEFAULT if visible else _DWM_COLOR_NONE)
+    try:
+        ctypes.windll.dwmapi.DwmSetWindowAttribute(
+            ctypes.c_void_p(int(widget.winId())), _DWMWA_BORDER_COLOR,
+            ctypes.byref(color), ctypes.sizeof(color),
+        )
+    except (AttributeError, OSError):
+        pass  # старая Windows без этого атрибута — рамки там и нет
 
 
 class MainWindow(QMainWindow):
     """Главное окно видеоплеера"""
 
     VIDEO_EXTENSIONS = {".mp4", ".avi", ".mkv", ".mov", ".wmv", ".flv", ".webm", ".m4v"}
-    FULLSCREEN_IDLE_MS = 3000  # через сколько бездействия прятать курсор и панель
+    RESUME_MIN_MS = 5000  # меньше — не спрашиваем и не продолжаем, начинаем сначала
 
     def __init__(self):
         super().__init__()
 
-        self.setWindowTitle("VideoPlayer")
+        self.setWindowTitle("Lucent")
+        # Свой заголовок на стеклянном фоне; рамку Windows вернём после показа окна
+        self.setWindowFlag(Qt.WindowType.FramelessWindowHint, True)
+        self._native_frame_ready = False
         self.resize(1280, 800)
         self.setAcceptDrops(True)
 
@@ -39,19 +72,25 @@ class MainWindow(QMainWindow):
         self.current_file_path = None
         self._pending_position = 0
 
+        self.settings = Settings(self)
         self.player = VideoPlayer()
         self.history = HistoryManager()
         self.sidebar = SidebarWidget()
         self.drawer = SidebarDrawer(self.sidebar, GLASS_GAP)
         self.controls = ControlsWidget()
-        self.fs_controls = FullscreenControls(self, ControlsWidget.SKIP_SECONDS)
+        self.fs_controls = FullscreenControls(self, self.settings.get("skip_seconds"))
         self.playlist = self.sidebar.playlist
+        self.title_bar = TitleBar(self)
+        self.folder_playlist = FolderPlaylist(self.VIDEO_EXTENSIONS, self)
+        self.thumbnailer = Thumbnailer(self)
+        self._folder_items = set()  # видео, пришедшие из папки-плейлиста
 
         self.setup_ui()
         self.setup_connections()
         self.setup_shortcuts()
 
         self.setStyleSheet(STYLE)
+        self._apply_settings()
 
         # Полноэкранный режим: опрашиваем позицию курсора, а не события мыши —
         # так смена раскладки и всплывающая панель не дают ложных «движений»
@@ -69,15 +108,11 @@ class MainWindow(QMainWindow):
         self.setFocusPolicy(Qt.FocusPolicy.StrongFocus)
 
     def setup_ui(self):
-        # Область видео
-        self.video_container = QWidget()
-        self.video_container.setObjectName("video_card")
-        self.video_container.setAttribute(Qt.WidgetAttribute.WA_StyledBackground)
-        self._set_video_card_style(rounded=True)
-        video_layout = QVBoxLayout()
-        video_layout.setContentsMargins(8, 8, 8, 8)
-        video_layout.addWidget(self.player.video_widget)
-        self.video_container.setLayout(video_layout)
+        # Область видео: картинка по своим пропорциям, со скруглёнными углами
+        self.video_container = VideoFrame(GLASS_RADIUS)
+        self.player.set_video_output(self.video_container.video_output)
+        self.ambient = AmbientColors(self.player.video_sink(), self)
+        self.video_container.double_clicked.connect(self.toggle_fullscreen)
 
         # Выдвижной плейлист | видео (отступ между ними входит в ширину drawer)
         content = QWidget()
@@ -90,39 +125,27 @@ class MainWindow(QMainWindow):
         root = GlassBackground()
         self.root = root
         root_layout = QVBoxLayout()
-        root_layout.setContentsMargins(GLASS_GAP, GLASS_GAP, GLASS_GAP, GLASS_GAP)
+        root_layout.setContentsMargins(GLASS_GAP, 0, GLASS_GAP, GLASS_GAP)
         root_layout.setSpacing(GLASS_GAP)
+        root_layout.addWidget(self.title_bar)
         root_layout.addWidget(content, stretch=1)
         root_layout.addWidget(self.controls)
         root.setLayout(root_layout)
 
         self.setCentralWidget(root)
 
-        self.player.video_widget.mouseDoubleClickEvent = self._on_video_double_click
-
-    def _set_video_card_style(self, rounded: bool):
-        if rounded:
-            self.video_container.setStyleSheet(f"""
-                QWidget#video_card {{
-                    background-color: rgba(0, 0, 0, 0.55);
-                    border: 1px solid rgba(255, 255, 255, 0.12);
-                    border-radius: {GLASS_RADIUS}px;
-                }}
-            """)
-        else:
-            self.video_container.setStyleSheet(
-                "QWidget#video_card { background-color: black; border: none; }"
-            )
-
     def _set_glass_layout(self, glass: bool):
         """Стеклянная раскладка с отступами или «голое» видео на весь экран"""
         gap = GLASS_GAP if glass else 0
-        self.root.layout().setContentsMargins(gap, gap, gap, gap)
+        self.root.layout().setContentsMargins(gap, 0, gap, gap)
         self.root.layout().setSpacing(gap)
+        self.title_bar.setVisible(glass)
+        # Без заголовка (весь экран) отступ сверху — как у остальных краёв
+        if not glass:
+            self.root.layout().setContentsMargins(0, 0, 0, 0)
         self.root.plain = not glass
         self.root.update()
-        self.video_container.layout().setContentsMargins(*([8] * 4 if glass else [0] * 4))
-        self._set_video_card_style(rounded=glass)
+        self.video_container.set_rounded(glass)
 
     def setup_connections(self):
         # Сайдбар
@@ -132,41 +155,63 @@ class MainWindow(QMainWindow):
         self.controls.prev_button.clicked.connect(self.prev_video)
         self.controls.play_button.clicked.connect(self.play_pause)
         self.controls.next_button.clicked.connect(self.next_video)
-        skip_ms = self.controls.SKIP_SECONDS * 1000
-        self.controls.rewind_button.clicked.connect(lambda: self.player.backward(skip_ms))
-        self.controls.skip_button.clicked.connect(lambda: self.player.forward(skip_ms))
+        self.controls.rewind_button.clicked.connect(lambda: self.player.backward(self._skip_ms()))
+        self.controls.skip_button.clicked.connect(lambda: self.player.forward(self._skip_ms()))
+        self.title_bar.settings_button.clicked.connect(self.open_settings)
         self.controls.fullscreen_button.clicked.connect(self.toggle_fullscreen)
+
+        # Плейлист: кнопка в нижней панели крутится в такт выезду панели
         self.controls.playlist_button.clicked.connect(self.drawer.toggle)
+        self.drawer.openness_changed.connect(self.controls.playlist_button.set_progress)
+        self.drawer.toggled.connect(
+            lambda is_open: self.controls.playlist_button.setToolTip(
+                ("Скрыть" if is_open else "Показать") + " плейлист (Ctrl+L)"
+            )
+        )
 
         # Полноэкранная панель
         fs = self.fs_controls
         fs.prev_button.clicked.connect(self.prev_video)
-        fs.rewind_button.clicked.connect(lambda: self.player.backward(skip_ms))
+        fs.rewind_button.clicked.connect(lambda: self.player.backward(self._skip_ms()))
         fs.play_button.clicked.connect(self.play_pause)
-        fs.skip_button.clicked.connect(lambda: self.player.forward(skip_ms))
+        fs.skip_button.clicked.connect(lambda: self.player.forward(self._skip_ms()))
         fs.next_button.clicked.connect(self.next_video)
         fs.mute_button.clicked.connect(self.controls.toggle_mute)
         fs.exit_button.clicked.connect(self.exit_fullscreen)
-        fs.position_slider.sliderMoved.connect(self.player.set_position)
+        fs.position_slider.seek_requested.connect(self.player.set_position)
         self.controls.muted_changed.connect(fs.set_muted)
         fs.volume_slider.valueChanged.connect(self.controls.volume_slider.setValue)
         self.controls.volume_slider.valueChanged.connect(fs.set_volume)
 
         # Ползунки
         self.controls.volume_slider.valueChanged.connect(self._on_volume_changed)
-        self.controls.position_slider.sliderMoved.connect(self.player.set_position)
+        self.controls.position_slider.seek_requested.connect(self.player.set_position)
+        self.controls.position_slider.valueChanged.connect(
+            lambda value: self.controls.update_time_display(value, self.player.duration())
+        )
 
         # Скорость
         self.controls.speed_changed.connect(self.change_speed)
+        self.controls.aspect_changed.connect(lambda mode: self.settings.set("aspect_mode", mode))
 
         # Плейлист
         self.playlist.itemDoubleClicked.connect(self.play_selected_video)
+        self.playlist.remove_requested.connect(self.remove_from_queue)
 
         # Сигналы плеера
         self.player.position_changed.connect(self.update_position)
         self.player.duration_changed.connect(self.update_duration)
         self.player.media_state_changed.connect(self.on_media_state_changed)
         self.player.error_occurred.connect(self.handle_player_error)
+        self.player.finished.connect(self._on_video_finished)
+        self.thumbnailer.ready.connect(self._on_thumbnail_ready)
+        self.ambient.palette_changed.connect(self._on_ambient_palette)
+        # Продолжение с места остановки — только когда файл загружен
+        self.player.player.mediaStatusChanged.connect(lambda _status: self._apply_pending_position())
+
+        self.settings.changed.connect(self._on_setting_changed)
+        self.folder_playlist.added.connect(self._on_folder_video_added)
+        self.folder_playlist.removed.connect(self._on_folder_video_removed)
 
     def setup_shortcuts(self):
         QShortcut(QKeySequence("Ctrl+O"), self).activated.connect(self.open_file)
@@ -196,6 +241,94 @@ class MainWindow(QMainWindow):
         QShortcut(QKeySequence("Ctrl+Q"), self).activated.connect(self.close)
         QShortcut(QKeySequence("F5"), self).activated.connect(self.reload_video)
         QShortcut(QKeySequence("Ctrl+L"), self).activated.connect(self.drawer.toggle)
+        QShortcut(QKeySequence("Ctrl+,"), self).activated.connect(self.open_settings)
+        QShortcut(QKeySequence("A"), self).activated.connect(self.cycle_aspect_mode)
+        QShortcut(QKeySequence("Delete"), self).activated.connect(self.playlist.request_remove_current)
+
+    # --- Настройки ---
+
+    def _apply_settings(self):
+        """Применить сохранённые настройки при запуске"""
+        if self.settings.get("remember_volume"):
+            self.controls.volume_slider.setValue(self.settings.get("volume"))
+        self._set_skip_seconds(self.settings.get("skip_seconds"))
+        self.ambient.enabled = self.settings.get("ambient_background")
+        self._set_aspect_mode(self.settings.get("aspect_mode"))
+        self._load_folder_playlist()
+
+    def _on_setting_changed(self, key: str, value):
+        if key == "skip_seconds":
+            self._set_skip_seconds(value)
+        elif key in ("playlist_folder", "watch_folder", "folder_sort"):
+            self._load_folder_playlist()
+        elif key == "aspect_mode":
+            self._set_aspect_mode(value)
+        elif key == "ambient_background":
+            self.ambient.enabled = value
+            self.ambient.reset()
+            if not value:
+                self.root.reset_colors()
+
+    # --- Папка-плейлист ---
+
+    def _load_folder_playlist(self):
+        """(Пере)загрузить видео из папки-плейлиста; добавленные вручную не трогаем"""
+        for path in self._folder_items:
+            if path != self.current_file_path:
+                self.playlist.remove_path(path)
+        self._folder_items.clear()
+        self.folder_playlist.stop()
+
+        folder = self.settings.get("playlist_folder")
+        if not folder or not Path(folder).is_dir():
+            return
+        files = self.folder_playlist.start(
+            folder, self.settings.get("watch_folder"), self.settings.get("folder_sort")
+        )
+        for path in files:
+            self._on_folder_video_added(path)
+        if self.current_file_path:
+            self.playlist.select_video(self.current_file_path)
+
+    def _on_folder_video_added(self, path: str):
+        self._folder_items.add(path)
+        self.playlist.add_video(path)
+
+    def _on_folder_video_removed(self, path: str):
+        # Играющее сейчас не выдёргиваем: уберём, когда переключатся на другое
+        if path != self.current_file_path:
+            self._folder_items.discard(path)
+            self.playlist.remove_path(path)
+
+    def _drop_deleted_folder_items(self):
+        for path in list(self._folder_items):
+            if path != self.current_file_path and not Path(path).exists():
+                self._folder_items.discard(path)
+                self.playlist.remove_path(path)
+
+    def _set_aspect_mode(self, mode: str):
+        self.video_container.set_aspect_mode(mode)
+        self.controls.set_aspect_text(mode)
+
+    def cycle_aspect_mode(self):
+        """Клавиша A: следующий формат по кругу"""
+        values = [value for _, value, _ in ASPECT_MODES]
+        current = self.settings.get("aspect_mode")
+        index = values.index(current) if current in values else 0
+        self.settings.set("aspect_mode", values[(index + 1) % len(values)])
+
+    def _set_skip_seconds(self, seconds: int):
+        for btn in (self.controls.rewind_button, self.controls.skip_button,
+                    self.fs_controls.rewind_button, self.fs_controls.skip_button):
+            btn.set_seconds(seconds)
+
+    def _skip_ms(self) -> int:
+        return self.settings.get("skip_seconds") * 1000
+
+    def open_settings(self):
+        dialog = SettingsDialog(self.settings, self)
+        dialog.history_cleared.connect(self.history.clear_history)
+        dialog.exec()
 
     # --- Drag & Drop ---
 
@@ -226,9 +359,6 @@ class MainWindow(QMainWindow):
         v = max(0, self.controls.volume_slider.value() - 5)
         self.controls.volume_slider.setValue(v)
 
-    def _on_video_double_click(self, event):
-        self.toggle_fullscreen()
-
     # --- Полноэкранный режим ---
 
     def toggle_fullscreen(self):
@@ -236,12 +366,15 @@ class MainWindow(QMainWindow):
             self._idle_timer.stop()
             self.fs_controls.hide_now()
             self._show_cursor()
+            set_window_border(self, True)
             self.showNormal()
+            restore_native_frame(self)  # Qt при выходе из полного экрана сбрасывает стиль рамки
             self._set_glass_layout(True)
             self.drawer.setVisible(True)
             self.controls.setVisible(True)
         else:
             self.showFullScreen()
+            set_window_border(self, False)
             self._set_glass_layout(False)
             self.drawer.setVisible(False)
             self.controls.setVisible(False)
@@ -268,7 +401,8 @@ class MainWindow(QMainWindow):
             self._idle_clock.restart()
             return
 
-        if self._idle_clock.elapsed() >= self.FULLSCREEN_IDLE_MS:
+        hide_seconds = self.settings.get("fullscreen_hide_seconds")
+        if hide_seconds and self._idle_clock.elapsed() >= hide_seconds * 1000:
             self._hide_cursor()
             self.fs_controls.hide_animated()
 
@@ -282,6 +416,28 @@ class MainWindow(QMainWindow):
             QApplication.restoreOverrideCursor()
             self._cursor_hidden = False
 
+    # --- Окно: свой заголовок поверх настоящей рамки Windows ---
+
+    def showEvent(self, event):
+        super().showEvent(event)
+        if not self._native_frame_ready:
+            self._native_frame_ready = True
+            restore_native_frame(self)
+
+    def nativeEvent(self, event_type, message):
+        if IS_WINDOWS and event_type == b"windows_generic_MSG" and self._native_frame_ready:
+            result = handle_native_event(self, self.title_bar, message)
+            if result is not None:
+                return result
+        # Не super(): базовый nativeEvent ничего не делает, а его ответ (False, None)
+        # в PyQt6 под Python 3.14 роняет приложение. (False, 0) — то же «не обработано».
+        return False, 0
+
+    def changeEvent(self, event):
+        super().changeEvent(event)
+        if event.type() == event.Type.WindowStateChange:
+            self.title_bar.update_state()
+
     def keyPressEvent(self, event):
         if event.key() in (Qt.Key.Key_F11, Qt.Key.Key_F):
             self.toggle_fullscreen()
@@ -293,8 +449,12 @@ class MainWindow(QMainWindow):
     # --- Видео ---
 
     def open_file(self):
+        # «+» открывает папку-плейлист, а без неё — последнюю использованную
+        folder = self.settings.get("playlist_folder")
+        if not folder or not Path(folder).is_dir():
+            folder = self.last_folder
         file_name, _ = QFileDialog.getOpenFileName(
-            self, "Открыть видео", self.last_folder,
+            self, "Добавить видео", folder,
             "Видео (*.mp4 *.avi *.mkv *.mov *.wmv *.flv *.webm *.m4v)"
         )
         if file_name:
@@ -304,21 +464,65 @@ class MainWindow(QMainWindow):
     def load_video(self, file_path: str):
         file_path = str(Path(file_path).resolve())
 
-        if self.current_file_path:
-            self.history.save_video(self.current_file_path, self.player.get_position())
-
-        if self.player.load_video(file_path):
-            self._pending_position = self.history.get_position(file_path)
-            self.current_file_path = file_path
-
-            self.controls.update_track_info(file_path, 0)
-            self.playlist.add_video(file_path)
-            self.playlist.select_video(file_path)
-
-            self.player.play()
-            self._set_play_state(True)
-        else:
+        self._save_progress()
+        if not Path(file_path).is_file():
             QMessageBox.warning(self, "Ошибка", f"Не удалось загрузить видео:\n{file_path}")
+            return
+
+        # Место продолжения и текущий файл — ДО открытия: ffmpeg может сообщить
+        # длительность прямо во время setSource, и update_duration должен их видеть
+        self._pending_position = self._resume_position(file_path)
+        self.current_file_path = file_path
+        self.player.load_video(file_path)
+        self._drop_deleted_folder_items()
+
+        self.controls.update_track_info(file_path, 0)
+        self.controls.cover.set_placeholder()
+        self.thumbnailer.request(file_path)
+        self.playlist.add_video(file_path)
+        self.playlist.select_video(file_path)
+
+        # Тот же файл ещё раз (или длительность уже пришла): сигнала durationChanged
+        # не будет — обновляем полосу и время сами
+        if self.player.duration() > 0:
+            self.update_duration(self.player.duration())
+
+        self.player.play()
+        self._set_play_state(True)
+
+    def _on_ambient_palette(self, colors):
+        # Последний кадр может прийти уже после остановки — фон тогда не трогаем
+        if self.current_file_path:
+            self.root.set_colors(colors)
+
+    def _on_thumbnail_ready(self, path: str, image):
+        if path == self.current_file_path:  # пока снимали кадр, могли открыть другое видео
+            self.controls.cover.set_image(image)
+
+    def _resume_position(self, file_path: str) -> int:
+        """С какого места начать видео — по настройке «Продолжать с места остановки»"""
+        mode = self.settings.get("resume")
+        position = self.history.get_position(file_path)
+        if mode == "never" or position < self.RESUME_MIN_MS:
+            return 0
+        if mode == "ask":
+            answer = QMessageBox.question(
+                self, "Lucent", f"Продолжить с {format_time(position)}?\n\n{Path(file_path).stem}"
+            )
+            if answer != QMessageBox.StandardButton.Yes:
+                return 0
+        return position
+
+    def _on_video_finished(self):
+        self._save_progress()  # досмотренное — в следующий раз с начала
+        action = self.settings.get("on_end")
+        if action == "repeat":
+            self.player.set_position(0)
+            self.player.play()
+        elif action == "next" and self.playlist.currentRow() < self.playlist.count() - 1:
+            self.next_video()
+        else:
+            self._set_play_state(False)
 
     def reload_video(self):
         if self.current_file_path:
@@ -326,6 +530,24 @@ class MainWindow(QMainWindow):
             if self.player.load_video(self.current_file_path):
                 self.player.set_position(pos)
                 self.player.play()
+
+    def remove_from_queue(self, path: str):
+        """Убрать видео из очереди (файл на диске не трогаем)"""
+        path = str(Path(path).resolve())
+        if path == self.current_file_path:
+            self._save_progress()  # место просмотра не теряется
+            self.player.stop()
+            self.current_file_path = None
+            self.ambient.reset()
+            self.root.reset_colors()
+            self._set_play_state(False)
+            self.controls.update_track_info(None)
+            self.controls.position_slider.setRange(0, 0)
+            self.controls.update_time_display(0, 0)
+            self.fs_controls.set_duration(0)
+            self.fs_controls.set_position(0)
+        self._folder_items.discard(path)
+        self.playlist.remove_path(path)
 
     def play_selected_video(self, item):
         file_path = self.playlist.get_video_path(self.playlist.row(item))
@@ -358,10 +580,10 @@ class MainWindow(QMainWindow):
             pass
 
     def update_position(self, position: int):
-        self.controls.position_slider.blockSignals(True)
-        self.controls.position_slider.setValue(position)
-        self.controls.position_slider.blockSignals(False)
-        self.controls.update_time_display(position, self.player.duration())
+        slider = self.controls.position_slider
+        slider.sync(position)
+        # Время — по ручке: пока её тянут, видно, куда будет перемотка
+        self.controls.update_time_display(slider.value(), self.player.duration())
         self.fs_controls.set_position(position)
 
     def update_duration(self, duration: int):
@@ -369,9 +591,18 @@ class MainWindow(QMainWindow):
         self.fs_controls.set_duration(duration)
         if self.current_file_path and duration > 0:
             self.controls.update_track_info(self.current_file_path, duration)
-            if self._pending_position > 0:
-                self.player.set_position(self._pending_position)
-                self._pending_position = 0
+            self._apply_pending_position()
+
+    def _apply_pending_position(self):
+        """Перейти к месту остановки. Длительность приходит, пока файл ещё
+        загружается (LoadingMedia), — тогда setPosition молча игнорируется."""
+        status = self.player.player.mediaStatus()
+        loaded = status in (QMediaPlayer.MediaStatus.LoadedMedia,
+                            QMediaPlayer.MediaStatus.BufferingMedia,
+                            QMediaPlayer.MediaStatus.BufferedMedia)
+        if self._pending_position > 0 and self.current_file_path and loaded:
+            self.player.set_position(self._pending_position)
+            self._pending_position = 0
 
     def on_media_state_changed(self, is_playing: bool):
         self._set_play_state(is_playing)
@@ -383,9 +614,16 @@ class MainWindow(QMainWindow):
     def handle_player_error(self, error_message: str):
         QMessageBox.critical(self, "Ошибка плеера", error_message)
 
+    def _save_progress(self):
+        """Запомнить место остановки; досмотренное видео — с начала"""
+        if not self.current_file_path or self.player.duration() <= 0:
+            return
+        finished = self.player.player.mediaStatus() == QMediaPlayer.MediaStatus.EndOfMedia
+        position = 0 if finished else self.player.get_position()
+        self.history.save_video(self.current_file_path, position)
+
     def _autosave_position(self):
-        if self.current_file_path and self.player.duration() > 0:
-            self.history.save_video(self.current_file_path, self.player.get_position())
+        self._save_progress()
 
     def closeEvent(self, event):
         self.autosave_timer.stop()
@@ -393,8 +631,12 @@ class MainWindow(QMainWindow):
         self.fs_controls.hide_now()
         self._show_cursor()
 
-        if self.current_file_path:
-            self.history.save_video(self.current_file_path, self.player.get_position())
+        self._save_progress()
+
+        # Без звука сохраняем громкость «до выключения», а не ноль
+        controls = self.controls
+        volume = controls._volume_before_mute if controls._muted else controls.volume_slider.value()
+        self.settings.set("volume", volume)
 
         self.history.close()
         event.accept()
