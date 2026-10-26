@@ -20,7 +20,6 @@ ASPECT_MODES = (
     ("16:9", "16:9", 16 / 9),
     ("4:3", "4:3", 4 / 3),
     ("21:9", "21:9", 21 / 9),
-    ("Заполнить", "fill", 0),
     ("Растянуть", "stretch", 0),
 )
 
@@ -42,6 +41,15 @@ class VideoFrame(QQuickWidget):
         self.rootObject().setProperty("radius", radius)
         # Сюда QMediaPlayer выводит картинку (setVideoOutput)
         self.video_output = self.rootObject().findChild(QObject, "video")
+        # Сигнал приходит из потока отрисовки видео — подключаем метод виджета
+        # (не lambda), чтобы Qt доставил его в главный поток
+        self._sink = self.video_output.property("videoSink")
+        self._sink.videoSizeChanged.connect(self._on_video_size_changed)
+
+    def _on_video_size_changed(self):
+        size = self._sink.videoSize()
+        aspect = size.width() / size.height() if size.height() > 0 else 0
+        self.rootObject().setProperty("videoAspect", aspect)
 
     def set_rounded(self, rounded: bool):
         """В окне — скругление; на весь экран — видео напрямую"""

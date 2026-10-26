@@ -109,7 +109,8 @@ def handle_native_event(window, title_bar, message):
 class TitleBar(QWidget):
     """Заголовок: значок и название слева, кнопки окна справа"""
 
-    HEIGHT = 40
+    HEIGHT = 32          # как у заголовка Windows 11
+    LEFT_INSET = 26      # значок — на одной линии с содержимым окна
 
     def __init__(self, window):
         super().__init__()
@@ -137,15 +138,16 @@ class TitleBar(QWidget):
         self.settings_button.setToolTip("Настройки (Ctrl+,)")
 
         layout = QHBoxLayout(self)
-        layout.setContentsMargins(14, 0, 4, 0)
+        layout.setContentsMargins(self.LEFT_INSET, 0, 0, 0)  # справа — вплотную к краю окна
         layout.setSpacing(8)
         layout.addWidget(icon)
         layout.addWidget(title)
         layout.addStretch()
         layout.addWidget(self.settings_button)
-        layout.addSpacing(10)
+        layout.addSpacing(8)
+        # Кнопки окна как у Windows: 46×32 без промежутков, до самого угла
         window_buttons = QHBoxLayout()
-        window_buttons.setSpacing(2)
+        window_buttons.setSpacing(0)
         for btn in (self.min_button, self.max_button, self.close_button):
             window_buttons.addWidget(btn)
         layout.addLayout(window_buttons)
@@ -154,11 +156,13 @@ class TitleBar(QWidget):
             QLabel#window_title {{ color: {GLASS_TEXT_SUB}; font-size: 12px; }}
             QPushButton {{
                 background: transparent; color: {GLASS_TEXT}; border: none;
-                border-radius: 8px; font-family: {ICON_FONT}; font-size: 10px;
+                border-radius: 0; font-family: {ICON_FONT}; font-size: 10px;
             }}
             QPushButton:hover {{ background-color: {GLASS_FILL_HOVER}; }}
             QPushButton:pressed {{ background-color: {GLASS_FILL_PRESSED}; }}
-            QPushButton#settings_btn {{ font-size: 15px; color: {GLASS_TEXT_SUB}; }}
+            QPushButton#settings_btn {{
+                font-size: 15px; color: {GLASS_TEXT_SUB}; border-radius: 8px;
+            }}
             QPushButton#settings_btn:hover {{ color: {GLASS_TEXT}; }}
             QPushButton#close_btn:hover {{ background-color: #c42b1c; color: white; }}
             QPushButton#close_btn:pressed {{ background-color: #a52618; color: white; }}

@@ -326,6 +326,7 @@ class ControlsWidget(GlassPanel):
 
     speed_changed = pyqtSignal(str)
     aspect_changed = pyqtSignal(str)
+    properties_clicked = pyqtSignal()  # клик по обложке или названию
     muted_changed = pyqtSignal(bool)
     SKIP_SECONDS = 10
     SPEEDS = ["0.5x", "0.75x", "1.0x", "1.25x", "1.5x", "2.0x"]
@@ -338,6 +339,11 @@ class ControlsWidget(GlassPanel):
 
         self.setup_ui()
         self.setup_speed_menu()
+        # Обложка и название открывают «Свойства» видео
+        for widget in (self.cover, self.title_label, self.subtitle_label):
+            widget.setCursor(Qt.CursorShape.PointingHandCursor)
+            widget.setToolTip("Свойства (Ctrl+I)")
+            widget.installEventFilter(self)
         self.setup_aspect_menu()
         self.setStyleSheet(control_styles())
         self.setFixedHeight(112)
@@ -473,6 +479,14 @@ class ControlsWidget(GlassPanel):
             action.triggered.connect(self._on_speed_selected)
         self.speed_button.clicked.connect(self._show_speed_menu)
         self.mute_button.clicked.connect(self.toggle_mute)
+
+    def eventFilter(self, obj, event):
+        if (event.type() == event.Type.MouseButtonRelease
+                and event.button() == Qt.MouseButton.LeftButton
+                and obj in (self.cover, self.title_label, self.subtitle_label)):
+            self.properties_clicked.emit()
+            return True
+        return super().eventFilter(obj, event)
 
     def setup_aspect_menu(self):
         self.aspect_menu = make_glass_menu(self)

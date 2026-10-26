@@ -22,6 +22,7 @@ from ui.glass import GlassBackground
 from ui.video_frame import VideoFrame, ASPECT_MODES
 from ui.window_frame import TitleBar, handle_native_event, restore_native_frame, IS_WINDOWS
 from ui.settings_dialog import SettingsDialog
+from ui.properties_dialog import PropertiesDialog
 from ui.styles import STYLE, GLASS_GAP, GLASS_RADIUS
 
 from core.player import VideoPlayer
@@ -124,12 +125,20 @@ class MainWindow(QMainWindow):
 
         root = GlassBackground()
         self.root = root
+        # Заголовок — на всю ширину окна (кнопки окна вплотную к углу, как у Windows),
+        # остальное — с общими стеклянными отступами
+        body = QWidget()
+        self.body_layout = QVBoxLayout(body)
+        self.body_layout.setContentsMargins(GLASS_GAP, GLASS_GAP, GLASS_GAP, GLASS_GAP)
+        self.body_layout.setSpacing(GLASS_GAP)
+        self.body_layout.addWidget(content, stretch=1)
+        self.body_layout.addWidget(self.controls)
+
         root_layout = QVBoxLayout()
-        root_layout.setContentsMargins(GLASS_GAP, 0, GLASS_GAP, GLASS_GAP)
-        root_layout.setSpacing(GLASS_GAP)
+        root_layout.setContentsMargins(0, 0, 0, 0)
+        root_layout.setSpacing(0)
         root_layout.addWidget(self.title_bar)
-        root_layout.addWidget(content, stretch=1)
-        root_layout.addWidget(self.controls)
+        root_layout.addWidget(body, stretch=1)
         root.setLayout(root_layout)
 
         self.setCentralWidget(root)
@@ -137,12 +146,9 @@ class MainWindow(QMainWindow):
     def _set_glass_layout(self, glass: bool):
         """Стеклянная раскладка с отступами или «голое» видео на весь экран"""
         gap = GLASS_GAP if glass else 0
-        self.root.layout().setContentsMargins(gap, 0, gap, gap)
-        self.root.layout().setSpacing(gap)
+        self.body_layout.setContentsMargins(gap, gap, gap, gap)
+        self.body_layout.setSpacing(gap)
         self.title_bar.setVisible(glass)
-        # Без заголовка (весь экран) отступ сверху — как у остальных краёв
-        if not glass:
-            self.root.layout().setContentsMargins(0, 0, 0, 0)
         self.root.plain = not glass
         self.root.update()
         self.video_container.set_rounded(glass)
@@ -197,6 +203,8 @@ class MainWindow(QMainWindow):
         # Плейлист
         self.playlist.itemDoubleClicked.connect(self.play_selected_video)
         self.playlist.remove_requested.connect(self.remove_from_queue)
+        self.playlist.properties_requested.connect(self.open_properties)
+        self.controls.properties_clicked.connect(self.open_properties)
 
         # Сигналы плеера
         self.player.position_changed.connect(self.update_position)
@@ -243,6 +251,7 @@ class MainWindow(QMainWindow):
         QShortcut(QKeySequence("Ctrl+L"), self).activated.connect(self.drawer.toggle)
         QShortcut(QKeySequence("Ctrl+,"), self).activated.connect(self.open_settings)
         QShortcut(QKeySequence("A"), self).activated.connect(self.cycle_aspect_mode)
+        QShortcut(QKeySequence("Ctrl+I"), self).activated.connect(self.open_properties)
         QShortcut(QKeySequence("Delete"), self).activated.connect(self.playlist.request_remove_current)
 
     # --- Настройки ---
@@ -307,6 +316,10 @@ class MainWindow(QMainWindow):
                 self.playlist.remove_path(path)
 
     def _set_aspect_mode(self, mode: str):
+        if mode not in [value for _, value, _ in ASPECT_MODES]:
+            # Формат из старой версии, которого больше нет (например, «Заполнить»)
+            self.settings.set("aspect_mode", "auto")
+            return
         self.video_container.set_aspect_mode(mode)
         self.controls.set_aspect_text(mode)
 
@@ -530,6 +543,12 @@ class MainWindow(QMainWindow):
             if self.player.load_video(self.current_file_path):
                 self.player.set_position(pos)
                 self.player.play()
+
+    def open_properties(self, path: str = ""):
+        """Окно «Свойства»: заданное видео, иначе играющее, иначе выделенное в очереди"""
+        path = path or self.current_file_path or self.playlist.current_video()
+        if path and Path(path).is_file():
+            PropertiesDialog(path, self).exec()
 
     def remove_from_queue(self, path: str):
         """Убрать видео из очереди (файл на диске не трогаем)"""

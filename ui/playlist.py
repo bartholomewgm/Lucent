@@ -12,6 +12,7 @@ class PlaylistWidget(QListWidget):
 
     count_changed = pyqtSignal(int)
     remove_requested = pyqtSignal(str)  # путь видео, которое просят убрать из очереди
+    properties_requested = pyqtSignal(str)  # путь видео для окна «Свойства»
 
     def __init__(self):
         super().__init__()
@@ -52,8 +53,12 @@ class PlaylistWidget(QListWidget):
             return
         path = item.data(Qt.ItemDataRole.UserRole)
         menu = make_glass_menu(self)
+        properties = menu.addAction("Свойства")
         remove = menu.addAction("Удалить из очереди")
-        if menu.exec(self.viewport().mapToGlobal(pos)) == remove:
+        chosen = menu.exec(self.viewport().mapToGlobal(pos))
+        if chosen == properties:
+            self.properties_requested.emit(str(path))
+        elif chosen == remove:
             self.remove_requested.emit(str(path))
 
     def request_remove_current(self):
