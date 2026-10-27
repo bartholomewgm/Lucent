@@ -51,6 +51,9 @@ class VideoFrame(QQuickWidget):
         aspect = size.width() / size.height() if size.height() > 0 else 0
         self.rootObject().setProperty("videoAspect", aspect)
 
+    def set_placeholder_color(self, color):
+        self.rootObject().setProperty("placeholderColor", color)
+
     def set_rounded(self, rounded: bool):
         """В окне — скругление; на весь экран — видео напрямую"""
         self.rootObject().setProperty("rounded", rounded)

@@ -2,10 +2,8 @@ from PyQt6.QtWidgets import QVBoxLayout, QPushButton, QWidget
 from PyQt6.QtCore import Qt, pyqtSignal, pyqtProperty, QPropertyAnimation, QEasingCurve
 
 from ui.glass import GlassPanel
-from ui.styles import (
-    GLASS_TEXT, GLASS_FILL, GLASS_FILL_HOVER,
-    GLASS_FILL_PRESSED, ICON_FONT, Icons
-)
+from ui.glass_button import GlassLook
+from ui.styles import T, ICON_FONT, Icons
 from ui.playlist import PlaylistWidget
 
 
@@ -30,23 +28,8 @@ class SidebarWidget(GlassPanel):
         self.open_button.setFocusPolicy(Qt.FocusPolicy.NoFocus)
         self.open_button.setFixedHeight(46)
         self.open_button.setToolTip("Добавить видео (Ctrl+O)")
-        self.open_button.setStyleSheet(f"""
-            QPushButton {{
-                background-color: {GLASS_FILL};
-                color: {GLASS_TEXT};
-                border: none;
-                border-radius: 23px;
-                font-family: {ICON_FONT};
-                font-size: 16px;
-            }}
-            QPushButton:hover {{
-                background-color: {GLASS_FILL_HOVER};
-            }}
-            QPushButton:pressed {{
-                background-color: {GLASS_FILL_PRESSED};
-            }}
-        """)
         self.open_button.clicked.connect(self.open_clicked.emit)
+        GlassLook(self.open_button)
         layout.addWidget(self.open_button)
 
         # ===== ПЛЕЙЛИСТ =====
@@ -54,6 +37,21 @@ class SidebarWidget(GlassPanel):
         layout.addWidget(self.playlist, stretch=1)
 
         self.setLayout(layout)
+        self.apply_theme()
+
+    def apply_theme(self):
+        """Перестроить стили под текущую тему"""
+        self.open_button.setStyleSheet(f"""
+            QPushButton, QPushButton:hover, QPushButton:pressed {{
+                background: transparent;  /* объём и тень — GlassLook */
+                color: {T.text};
+                border: none;
+                font-family: {ICON_FONT};
+                font-size: 16px;
+            }}
+        """)
+        self.playlist.apply_theme()
+        self.update()
 
 
 class SidebarDrawer(QWidget):

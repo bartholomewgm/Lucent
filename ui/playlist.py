@@ -4,7 +4,7 @@ from PyQt6.QtWidgets import QListWidget, QListWidgetItem, QWidget, QLabel, QVBox
 from PyQt6.QtCore import Qt, pyqtSignal
 
 from ui.glass import make_glass_menu
-from ui.styles import GLASS_TEXT_SUB, GLASS_TEXT, GLASS_ACCENT_SOFT
+from ui.styles import T
 
 
 class PlaylistWidget(QListWidget):
@@ -22,11 +22,14 @@ class PlaylistWidget(QListWidget):
         self.customContextMenuRequested.connect(self._show_context_menu)
         self.setVerticalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
         self.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
+        self.apply_theme()
+
+    def apply_theme(self):
         self.setStyleSheet(f"""
             QListWidget {{
                 background-color: transparent;
                 border: none;
-                color: {GLASS_TEXT_SUB};
+                color: {T.text_sub};
                 font-size: 13px;
                 outline: none;
                 padding: 2px 0px;
@@ -37,12 +40,12 @@ class PlaylistWidget(QListWidget):
                 margin: 2px 0px;
             }}
             QListWidget::item:hover {{
-                color: {GLASS_TEXT};
-                background-color: rgba(255, 255, 255, 0.07);
+                color: {T.text};
+                background-color: {T.fill};
             }}
             QListWidget::item:selected {{
-                background-color: {GLASS_ACCENT_SOFT};
-                color: {GLASS_TEXT};
+                background-color: {T.accent_soft};
+                color: {T.text};
                 font-weight: 600;
             }}
         """)
@@ -164,14 +167,14 @@ class PlaylistHeaderWidget(QWidget):
         
         self.title_label = QLabel("Плейлист")
         self.title_label.setStyleSheet(f"""
-            color: {GLASS_TEXT};
+            color: {T.text};
             font-size: 14px;
             font-weight: 700;
         """)
         
         self.count_label = QLabel("0 видео")
         self.count_label.setStyleSheet(f"""
-            color: {GLASS_TEXT_SUB};
+            color: {T.text_sub};
             font-size: 11px;
         """)
         

@@ -12,21 +12,13 @@ from PyQt6.QtWidgets import (
     QStyleOptionSlider,
 )
 from PyQt6.QtCore import Qt, QPointF, QRectF, QElapsedTimer, pyqtSignal
-from PyQt6.QtGui import QFont, QPainter, QColor, QPen
+from PyQt6.QtGui import QFont, QPainter, QPen
 
 from ui.cover_art import CoverArtWidget
 from ui.video_frame import ASPECT_MODES
 from ui.glass import GlassPanel, make_glass_menu
-from ui.styles import (
-    GLASS_FILL,
-    GLASS_FILL_HOVER,
-    GLASS_FILL_PRESSED,
-    GLASS_TEXT,
-    GLASS_TEXT_SUB,
-    GLASS_ACCENT,
-    ICON_FONT,
-    Icons
-)
+from ui.glass_button import GlassLook
+from ui.styles import T, ICON_FONT, Icons
 
 
 def make_icon_btn(glyph: str, size: int) -> QPushButton:
@@ -44,10 +36,11 @@ def make_control_btn(glyph: str, size: int) -> QPushButton:
     return btn
 
 
-def make_play_btn() -> QPushButton:
+def make_play_btn(palette=None) -> QPushButton:
     btn = make_icon_btn(Icons.PLAY, 48)
     btn.setObjectName("play_btn")
     btn.setToolTip("Воспроизвести (Пробел)")
+    GlassLook(btn, kind="play", palette=palette)  # объёмная, с мягкой тенью
     return btn
 
 
@@ -63,58 +56,48 @@ def format_time(ms: int) -> str:
     return f"{minutes}:{secs:02d}"
 
 
-def control_styles() -> str:
+def control_styles(p=None) -> str:
     """Общие стили кнопок и ползунков для нижней и полноэкранной панелей"""
+    p = p or T
     return f"""
         QLabel#time_label {{
-            color: {GLASS_TEXT};
+            color: {p.text};
             font-size: 13px;
         }}
         QPushButton#icon_btn, QPushButton#control_btn {{
             background-color: transparent;
-            color: {GLASS_TEXT_SUB};
+            color: {p.text_sub};
             border: none;
             border-radius: 17px;
             font-family: {ICON_FONT};
             font-size: 15px;
         }}
         QPushButton#control_btn {{
-            color: {GLASS_TEXT};
+            color: {p.text};
             border-radius: 20px;
             font-size: 17px;
         }}
         QPushButton#icon_btn:hover, QPushButton#control_btn:hover {{
-            color: {GLASS_TEXT};
-            background-color: {GLASS_FILL_HOVER};
+            color: {p.text};
+            background-color: {p.fill_hover};
         }}
         QPushButton#icon_btn:pressed, QPushButton#control_btn:pressed {{
-            background-color: {GLASS_FILL_PRESSED};
+            background-color: {p.fill_pressed};
         }}
-        QPushButton#play_btn {{
-            background-color: qlineargradient(x1:0, y1:0, x2:0, y2:1,
-                stop:0 #ffffff, stop:1 #e4e6ee);
-            color: #0a0c14;
-            border: 1px solid rgba(255, 255, 255, 0.9);
-            border-radius: 24px;
+        /* Объём, блик и тень у Play и «пилюль» рисует GlassLook (ui/glass_button.py) */
+        QPushButton#play_btn, QPushButton#play_btn:hover, QPushButton#play_btn:pressed {{
+            background: transparent;
+            color: {p.play_fg};
+            border: none;
             font-family: {ICON_FONT};
             font-size: 18px;
         }}
-        QPushButton#play_btn:hover {{
-            background-color: #ffffff;
-        }}
-        QPushButton#play_btn:pressed {{
-            background-color: #d6d8e0;
-        }}
-        QPushButton#pill_btn {{
-            background-color: {GLASS_FILL};
-            color: {GLASS_TEXT};
+        QPushButton#pill_btn, QPushButton#pill_btn:hover, QPushButton#pill_btn:pressed {{
+            background: transparent;
+            color: {p.text};
             border: none;
-            border-radius: 15px;
             font-size: 12px;
             font-weight: 600;
-        }}
-        QPushButton#pill_btn:hover {{
-            background-color: {GLASS_FILL_HOVER};
         }}
         QProgressBar {{
             background-color: transparent;
@@ -122,19 +105,19 @@ def control_styles() -> str:
             max-height: 2px;
         }}
         QProgressBar::chunk {{
-            background-color: {GLASS_ACCENT};
+            background-color: {p.accent};
         }}
         QSlider::groove:horizontal {{
             height: 6px;
-            background: rgba(255, 255, 255, 0.16);
+            background: {p.groove};
             border-radius: 3px;
         }}
         QSlider::sub-page:horizontal {{
-            background: {GLASS_TEXT};
+            background: {p.text};
             border-radius: 3px;
         }}
         QSlider::handle:horizontal {{
-            background: {GLASS_TEXT};
+            background: {p.text};
             width: 14px;
             height: 14px;
             margin: -4px 0;
@@ -227,8 +210,9 @@ class SeekSlider(QSlider):
 class SkipButton(QPushButton):
     """Кнопка перемотки в стиле iOS: круговая стрелка с числом секунд внутри"""
 
-    def __init__(self, seconds: int, forward: bool):
+    def __init__(self, seconds: int, forward: bool, palette=None):
         super().__init__()
+        self._palette = palette  # None — текущая тема
         self.seconds = seconds
         self.forward = forward
         self.setFixedSize(40, 40)
@@ -248,7 +232,7 @@ class SkipButton(QPushButton):
         p = QPainter(self)
         p.setRenderHint(QPainter.RenderHint.Antialiasing)
         p.setRenderHint(QPainter.RenderHint.TextAntialiasing)
-        p.setPen(QColor(GLASS_TEXT))
+        p.setPen((self._palette or T).color("text"))
         rect = QRectF(self.rect())
 
         # Стрелка: для «назад» отражаем по горизонтали
@@ -301,13 +285,13 @@ class PlaylistToggleButton(QPushButton):
 
         # Подсветка «открыто»: синий кружок проявляется вместе с панелью
         if t > 0:
-            glow = QColor(GLASS_ACCENT)
+            glow = T.color("accent")
             glow.setAlphaF(0.35 * t)
             p.setPen(Qt.PenStyle.NoPen)
             p.setBrush(glow)
             p.drawEllipse(QRectF(self.rect()).adjusted(1, 1, -1, -1))
 
-        pen = QPen(QColor(GLASS_TEXT), 2.0)
+        pen = QPen(T.color("text"), 2.0)
         pen.setCapStyle(Qt.PenCapStyle.RoundCap)
         p.setPen(pen)
         p.translate(self.width() / 2, self.height() / 2)
@@ -345,7 +329,7 @@ class ControlsWidget(GlassPanel):
             widget.setToolTip("Свойства (Ctrl+I)")
             widget.installEventFilter(self)
         self.setup_aspect_menu()
-        self.setStyleSheet(control_styles())
+        self.apply_theme()
         self.setFixedHeight(112)
 
     def setup_ui(self):
@@ -373,10 +357,8 @@ class ControlsWidget(GlassPanel):
         title_font.setPointSize(12)
         title_font.setWeight(QFont.Weight.DemiBold)
         self.title_label.setFont(title_font)
-        self.title_label.setStyleSheet(f"color: {GLASS_TEXT};")
 
         self.subtitle_label = QLabel()
-        self.subtitle_label.setStyleSheet(f"color: {GLASS_TEXT_SUB}; font-size: 11px;")
 
         # Вертикальное расположение: название + подзаголовок
         info_layout = QVBoxLayout()
@@ -423,6 +405,7 @@ class ControlsWidget(GlassPanel):
         self.speed_button.setCursor(Qt.CursorShape.PointingHandCursor)
         self.speed_button.setFocusPolicy(Qt.FocusPolicy.NoFocus)
         self.speed_button.setToolTip("Скорость ([ / ])")
+        GlassLook(self.speed_button)
 
         self.aspect_button = QPushButton("Авто")
         self.aspect_button.setObjectName("pill_btn")
@@ -432,6 +415,7 @@ class ControlsWidget(GlassPanel):
         self.aspect_button.setFocusPolicy(Qt.FocusPolicy.NoFocus)
         self.aspect_button.setToolTip("Формат картинки (A)")
         self.aspect_button.setStyleSheet("padding: 0 12px;")
+        GlassLook(self.aspect_button)
 
         self.mute_button = make_icon_btn(Icons.VOLUME, 34)
         self.mute_button.setToolTip("Без звука (M)")
@@ -487,6 +471,14 @@ class ControlsWidget(GlassPanel):
             self.properties_clicked.emit()
             return True
         return super().eventFilter(obj, event)
+
+    def apply_theme(self):
+        """Перестроить стили под текущую тему"""
+        self.setStyleSheet(control_styles())
+        self.title_label.setStyleSheet(f"color: {T.text};")
+        self.subtitle_label.setStyleSheet(f"color: {T.text_sub}; font-size: 11px;")
+        self.cover.apply_theme()
+        self.update()
 
     def setup_aspect_menu(self):
         self.aspect_menu = make_glass_menu(self)

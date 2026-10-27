@@ -6,7 +6,7 @@ from PyQt6.QtWidgets import QLabel
 from PyQt6.QtGui import QImage, QPainter, QPainterPath, QPixmap
 from PyQt6.QtCore import QRectF, Qt
 
-from ui.styles import GLASS_FILL, GLASS_TEXT_SUB, ICON_FONT, Icons
+from ui.styles import T, ICON_FONT, Icons
 
 
 class CoverArtWidget(QLabel):
@@ -19,15 +19,18 @@ class CoverArtWidget(QLabel):
         self._size = size
         self.setFixedSize(size, size)
         self.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        self.apply_theme()
+        self.set_placeholder()
+
+    def apply_theme(self):
         self.setStyleSheet(f"""
-            background-color: {GLASS_FILL};
+            background-color: {T.fill};
             border: none;
             border-radius: {self.RADIUS}px;
-            color: {GLASS_TEXT_SUB};
+            color: {T.text_sub};
             font-family: {ICON_FONT};
             font-size: 20px;
         """)
-        self.set_placeholder()
 
     def set_placeholder(self):
         self.setPixmap(QPixmap())

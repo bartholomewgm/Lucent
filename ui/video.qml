@@ -9,6 +9,7 @@ Item {
     id: root
     property real radius: 24
     property bool rounded: true          // false — полный экран: без маски, напрямую
+    property color placeholderColor: "#8c000000"  // подложка, пока видео нет (из темы)
     // auto — как снято; stretch — растянуть;
     // при forcedAspect > 0 картинка показывается в заданных пропорциях (16:9, 4:3…)
     property string mode: "auto"
@@ -38,7 +39,7 @@ Item {
     Rectangle {
         anchors.fill: parent
         radius: root.radius
-        color: "#8c000000"
+        color: root.placeholderColor
         antialiasing: true
         visible: root.rounded && !root.hasVideo
     }

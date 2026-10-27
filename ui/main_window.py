@@ -19,11 +19,12 @@ from ui.sidebar import SidebarWidget, SidebarDrawer
 from ui.controls import ControlsWidget, format_time
 from ui.fullscreen_controls import FullscreenControls
 from ui.glass import GlassBackground
+from ui.glass_button import GlassLook
 from ui.video_frame import VideoFrame, ASPECT_MODES
 from ui.window_frame import TitleBar, handle_native_event, restore_native_frame, IS_WINDOWS
 from ui.settings_dialog import SettingsDialog
 from ui.properties_dialog import PropertiesDialog
-from ui.styles import STYLE, GLASS_GAP, GLASS_RADIUS
+from ui.styles import T, app_style, set_theme, GLASS_GAP, GLASS_RADIUS
 
 from core.player import VideoPlayer
 from core.history import HistoryManager
@@ -74,6 +75,8 @@ class MainWindow(QMainWindow):
         self._pending_position = 0
 
         self.settings = Settings(self)
+        # Тема — до создания виджетов: они берут цвета из палитры при построении
+        set_theme(self.settings.get("theme"))
         self.player = VideoPlayer()
         self.history = HistoryManager()
         self.sidebar = SidebarWidget()
@@ -90,7 +93,7 @@ class MainWindow(QMainWindow):
         self.setup_connections()
         self.setup_shortcuts()
 
-        self.setStyleSheet(STYLE)
+        self.setStyleSheet(app_style())
         self._apply_settings()
 
         # Полноэкранный режим: опрашиваем позицию курсора, а не события мыши —
@@ -142,6 +145,8 @@ class MainWindow(QMainWindow):
         root.setLayout(root_layout)
 
         self.setCentralWidget(root)
+        root.set_focus_widget(self.video_container)  # свечение цветов видео — вокруг него
+        self.video_container.set_placeholder_color(T.color("placeholder"))
 
     def _set_glass_layout(self, glass: bool):
         """Стеклянная раскладка с отступами или «голое» видео на весь экран"""
@@ -272,6 +277,8 @@ class MainWindow(QMainWindow):
             self._load_folder_playlist()
         elif key == "aspect_mode":
             self._set_aspect_mode(value)
+        elif key == "theme":
+            self.apply_theme(value)
         elif key == "ambient_background":
             self.ambient.enabled = value
             self.ambient.reset()
@@ -314,6 +321,17 @@ class MainWindow(QMainWindow):
             if path != self.current_file_path and not Path(path).exists():
                 self._folder_items.discard(path)
                 self.playlist.remove_path(path)
+
+    def apply_theme(self, name: str):
+        """Сменить тему на лету: палитра, затем стили всех частей окна"""
+        set_theme(name)
+        self.setStyleSheet(app_style())
+        for part in (self.title_bar, self.sidebar, self.controls, self.root):
+            part.apply_theme()
+        GlassLook.retheme_all()
+        self.video_container.set_placeholder_color(T.color("placeholder"))
+        for widget in self.findChildren(QWidget):
+            widget.update()
 
     def _set_aspect_mode(self, mode: str):
         if mode not in [value for _, value, _ in ASPECT_MODES]:
@@ -450,6 +468,9 @@ class MainWindow(QMainWindow):
         super().changeEvent(event)
         if event.type() == event.Type.WindowStateChange:
             self.title_bar.update_state()
+            # Контур окна — только у обычного окна, как у системных
+            self.root.outline = not (self.isMaximized() or self.isFullScreen())
+            self.root.update()
 
     def keyPressEvent(self, event):
         if event.key() in (Qt.Key.Key_F11, Qt.Key.Key_F):

@@ -10,7 +10,8 @@ from PyQt6.QtWidgets import QDialog, QGridLayout, QHBoxLayout, QLabel, QPushButt
 from core.media_info import MediaInfoProbe
 from ui.controls import format_time
 from ui.glass import GlassPanel
-from ui.styles import GLASS_ACCENT, GLASS_FILL, GLASS_FILL_HOVER, GLASS_TEXT, GLASS_TEXT_MUTED, GLASS_TEXT_SUB
+from ui.glass_button import GlassLook
+from ui.styles import T
 
 CHANNELS = {1: "1 (моно)", 2: "2 (стерео)", 6: "6 (5.1)", 8: "8 (7.1)"}
 
@@ -154,6 +155,7 @@ class PropertiesDialog(QDialog):
         close.setCursor(Qt.CursorShape.PointingHandCursor)
         close.clicked.connect(self.accept)
         close.setDefault(True)
+        GlassLook(close)
         bottom = QHBoxLayout()
         bottom.addStretch()
         bottom.addWidget(close)
@@ -161,20 +163,19 @@ class PropertiesDialog(QDialog):
         layout.addLayout(bottom)
 
         self.setStyleSheet(f"""
-            QLabel#title {{ color: {GLASS_TEXT}; font-size: 22px; font-weight: 700; }}
-            QLabel#field {{ color: {GLASS_TEXT_SUB}; font-size: 12px; }}
-            QLabel#value {{ color: {GLASS_TEXT}; font-size: 14px; }}
-            QLabel#value[empty="true"] {{ color: {GLASS_TEXT_MUTED}; }}
+            QLabel#title {{ color: {T.text}; font-size: 22px; font-weight: 700; }}
+            QLabel#field {{ color: {T.text_sub}; font-size: 12px; }}
+            QLabel#value {{ color: {T.text}; font-size: 14px; }}
+            QLabel#value[empty="true"] {{ color: {T.text_muted}; }}
             QPushButton#link {{
                 background: transparent; border: none; padding: 0;
-                color: {GLASS_ACCENT}; font-size: 13px; text-align: left;
+                color: {T.accent}; font-size: 13px; text-align: left;
             }}
             QPushButton#link:hover {{ text-decoration: underline; }}
-            QPushButton#close {{
-                background-color: {GLASS_FILL}; color: {GLASS_TEXT}; border: none;
-                border-radius: 18px; font-size: 13px; font-weight: 600;
+            QPushButton#close, QPushButton#close:hover, QPushButton#close:pressed {{
+                background: transparent; color: {T.text}; border: none;  /* объём — GlassLook */
+                font-size: 13px; font-weight: 600;
             }}
-            QPushButton#close:hover {{ background-color: {GLASS_FILL_HOVER}; }}
         """)
 
         self._probe = MediaInfoProbe(self.path, self)

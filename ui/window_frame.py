@@ -13,7 +13,7 @@ from PyQt6.QtCore import QPoint, Qt
 from PyQt6.QtGui import QPixmap
 from PyQt6.QtWidgets import QApplication, QHBoxLayout, QLabel, QPushButton, QWidget
 
-from ui.styles import GLASS_FILL_HOVER, GLASS_FILL_PRESSED, GLASS_TEXT, GLASS_TEXT_SUB, ICON_FONT, Icons
+from ui.styles import T, ICON_FONT, Icons
 
 IS_WINDOWS = sys.platform == "win32"
 
@@ -28,6 +28,7 @@ WS_CAPTION, WS_THICKFRAME = 0x00C00000, 0x00040000
 WS_MINIMIZEBOX, WS_MAXIMIZEBOX, WS_SYSMENU = 0x00020000, 0x00010000, 0x00080000
 SWP_FRAMECHANGED, SWP_NOMOVE, SWP_NOSIZE, SWP_NOZORDER = 0x0020, 0x0002, 0x0001, 0x0004
 SM_CXSIZEFRAME, SM_CYSIZEFRAME, SM_CXPADDEDBORDER = 32, 33, 92
+DWMWA_WINDOW_CORNER_PREFERENCE, DWMWCP_ROUND = 33, 2
 
 RESIZE_BORDER = 6  # толщина «хватательной» зоны по краям, логические пиксели
 
@@ -50,6 +51,14 @@ def restore_native_frame(window):
     user32.SetWindowLongW(hwnd, GWL_STYLE, style)
     user32.SetWindowPos(hwnd, 0, 0, 0, 0, 0,
                         SWP_FRAMECHANGED | SWP_NOMOVE | SWP_NOSIZE | SWP_NOZORDER)
+    # Скруглённые углы окна Windows 11 — под них нарисован контур (GlassBackground)
+    preference = ctypes.c_int(DWMWCP_ROUND)
+    try:
+        ctypes.windll.dwmapi.DwmSetWindowAttribute(
+            ctypes.c_void_p(hwnd), DWMWA_WINDOW_CORNER_PREFERENCE,
+            ctypes.byref(preference), ctypes.sizeof(preference))
+    except (AttributeError, OSError):
+        pass  # Windows 10: углы прямые, атрибута нет
 
 
 def _frame_thickness(hwnd) -> int:
@@ -151,22 +160,25 @@ class TitleBar(QWidget):
         for btn in (self.min_button, self.max_button, self.close_button):
             window_buttons.addWidget(btn)
         layout.addLayout(window_buttons)
+        self.apply_theme()
 
+    def apply_theme(self):
         self.setStyleSheet(f"""
-            QLabel#window_title {{ color: {GLASS_TEXT_SUB}; font-size: 12px; }}
+            QLabel#window_title {{ color: {T.text_sub}; font-size: 12px; }}
             QPushButton {{
-                background: transparent; color: {GLASS_TEXT}; border: none;
+                background: transparent; color: {T.text}; border: none;
                 border-radius: 0; font-family: {ICON_FONT}; font-size: 10px;
             }}
-            QPushButton:hover {{ background-color: {GLASS_FILL_HOVER}; }}
-            QPushButton:pressed {{ background-color: {GLASS_FILL_PRESSED}; }}
+            QPushButton:hover {{ background-color: {T.fill_hover}; }}
+            QPushButton:pressed {{ background-color: {T.fill_pressed}; }}
             QPushButton#settings_btn {{
-                font-size: 15px; color: {GLASS_TEXT_SUB}; border-radius: 8px;
+                font-size: 15px; color: {T.text_sub}; border-radius: 8px;
             }}
-            QPushButton#settings_btn:hover {{ color: {GLASS_TEXT}; }}
+            QPushButton#settings_btn:hover {{ color: {T.text}; }}
             QPushButton#close_btn:hover {{ background-color: #c42b1c; color: white; }}
             QPushButton#close_btn:pressed {{ background-color: #a52618; color: white; }}
         """)
+
 
     def _button(self, glyph: str, tip: str, slot) -> QPushButton:
         btn = QPushButton(glyph)

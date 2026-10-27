@@ -19,6 +19,7 @@ class Settings(QObject):
         "remember_volume": True,
         "volume": 50,
         "fullscreen_hide_seconds": 3,  # 0 — не прятать
+        "theme": "gradient",         # gradient | dark | light (см. ui/styles.py)
         "ambient_background": True,  # фон под цвета видео
         "aspect_mode": "auto",       # формат картинки (см. ui/video_frame.py)
         "playlist_folder": "",       # пусто — очередь собирается вручную

@@ -23,7 +23,7 @@ from ui.controls import (
     make_play_btn,
 )
 from ui.glass import GlassPanel
-from ui.styles import GLASS_TEXT, Icons
+from ui.styles import OVERLAY, Icons
 
 
 class FullscreenControls(GlassPanel):
@@ -37,7 +37,8 @@ class FullscreenControls(GlassPanel):
     HIDE_MS = 220
 
     def __init__(self, owner, skip_seconds: int):
-        super().__init__(owner, radius=26, tint_alpha=150)
+        # Поверх видео панель всегда тёмная, в любой теме
+        super().__init__(owner, radius=26, tint_alpha=150, palette=OVERLAY)
         self.setWindowFlags(
             Qt.WindowType.Tool
             | Qt.WindowType.FramelessWindowHint
@@ -51,9 +52,9 @@ class FullscreenControls(GlassPanel):
         self._shown = False
         self._setup_ui(skip_seconds)
         # Над видео иконки и время ярче, чем на нижней панели
-        self.setStyleSheet(control_styles() + f"""
-            QPushButton#icon_btn {{ color: {GLASS_TEXT}; font-size: 17px; border-radius: 18px; }}
-            QLabel#time_label {{ color: {GLASS_TEXT}; font-size: 14px; }}
+        self.setStyleSheet(control_styles(OVERLAY) + f"""
+            QPushButton#icon_btn {{ color: {OVERLAY.text}; font-size: 17px; border-radius: 18px; }}
+            QLabel#time_label {{ color: {OVERLAY.text}; font-size: 14px; }}
         """)
         self._setup_animation()
 
@@ -95,9 +96,9 @@ class FullscreenControls(GlassPanel):
 
         self.prev_button = make_control_btn(Icons.PREVIOUS, 40)
         self.prev_button.setToolTip("Предыдущее (P)")
-        self.rewind_button = SkipButton(skip_seconds, forward=False)
-        self.play_button = make_play_btn()
-        self.skip_button = SkipButton(skip_seconds, forward=True)
+        self.rewind_button = SkipButton(skip_seconds, forward=False, palette=OVERLAY)
+        self.play_button = make_play_btn(OVERLAY)
+        self.skip_button = SkipButton(skip_seconds, forward=True, palette=OVERLAY)
         self.next_button = make_control_btn(Icons.NEXT, 40)
         self.next_button.setToolTip("Следующее (N)")
 

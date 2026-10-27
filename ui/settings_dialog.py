@@ -30,16 +30,9 @@ from PyQt6.QtWidgets import (
 
 from core import autostart
 from ui.glass import GlassPanel
+from ui.glass_button import GlassLook
 from ui.video_frame import ASPECT_MODES
-from ui.styles import (
-    GLASS_ACCENT,
-    GLASS_FILL,
-    GLASS_FILL_HOVER,
-    GLASS_FILL_PRESSED,
-    GLASS_TEXT,
-    GLASS_TEXT_MUTED,
-    GLASS_TEXT_SUB,
-)
+from ui.styles import T, THEME_NAMES
 
 
 class ToggleSwitch(QAbstractButton):
@@ -77,7 +70,7 @@ class ToggleSwitch(QAbstractButton):
         p = QPainter(self)
         p.setRenderHint(QPainter.RenderHint.Antialiasing)
         t = self._offset
-        off, on = QColor(255, 255, 255, 40), QColor(GLASS_ACCENT)
+        off, on = T.color("toggle_off"), T.color("accent")
         track = QColor(
             round(off.red() + (on.red() - off.red()) * t),
             round(off.green() + (on.green() - off.green()) * t),
@@ -166,6 +159,8 @@ class SettingsDialog(QDialog):
         scroll.viewport().setAutoFillBackground(False)
         panel_layout.addWidget(scroll)
         self.setStyleSheet(self._styles())
+        # Тему меняют прямо здесь — перекрашиваемся сразу (MainWindow уже сменил палитру)
+        settings.changed.connect(self._on_setting_changed)
 
         screen = (parent or self).screen().availableGeometry()
         max_content = screen.height() - 160
@@ -184,6 +179,7 @@ class SettingsDialog(QDialog):
         close.setFocusPolicy(Qt.FocusPolicy.NoFocus)
         close.setToolTip("Закрыть (Esc)")
         close.clicked.connect(self.accept)
+        GlassLook(close)
         row = QHBoxLayout()
         row.addWidget(title)
         row.addStretch()
@@ -216,6 +212,7 @@ class SettingsDialog(QDialog):
         if hint:
             hint_label = QLabel(hint)
             hint_label.setObjectName("hint")
+            hint_label.setWordWrap(True)  # длинная подсказка не раздвигает окно
             labels.addWidget(hint_label)
         row_layout.addLayout(labels)
         row_layout.addStretch()
@@ -235,6 +232,7 @@ class SettingsDialog(QDialog):
         if hint:
             hint_label = QLabel(hint)
             hint_label.setObjectName("hint")
+            hint_label.setWordWrap(True)  # длинная подсказка не раздвигает окно
             row_layout.addWidget(hint_label)
         row_layout.addWidget(control)
         card_layout.addWidget(row)
@@ -264,6 +262,8 @@ class SettingsDialog(QDialog):
                   "Громкость при следующем запуске будет той же")
 
         card = self._section(layout, "Оформление")
+        self._row(card, "Тема", self._segmented("theme", [(label, value) for label, value in THEME_NAMES]),
+                  "Светлая и тёмная: цвета видео — только вокруг него")
         self._stacked_row(card, "Формат картинки", self._segmented(
             "aspect_mode", [(label, value) for label, value, _ in ASPECT_MODES]),
             "Как видео вписывается в окно. Переключать на ходу — клавиша A")
@@ -296,12 +296,21 @@ class SettingsDialog(QDialog):
         self._row(card, "История просмотров", self.clear_button,
                   "Места остановки во всех видео")
 
+    def _on_setting_changed(self, key, _value):
+        if key == "theme":
+            self.setStyleSheet(self._styles())
+            GlassLook.retheme_all()
+            for widget in self.findChildren(QWidget):
+                widget.update()
+            self.update()
+
     def _pill(self, text: str, slot):
         btn = QPushButton(text)
         btn.setObjectName("pill")
         btn.setCursor(Qt.CursorShape.PointingHandCursor)
         btn.setFocusPolicy(Qt.FocusPolicy.NoFocus)
         btn.clicked.connect(slot)
+        GlassLook(btn)
         return btn
 
     # ----- Действия -----
@@ -367,36 +376,33 @@ class SettingsDialog(QDialog):
 
     def _styles(self) -> str:
         return f"""
-            QLabel#title {{ color: {GLASS_TEXT}; font-size: 22px; font-weight: 700; }}
+            QLabel#title {{ color: {T.text}; font-size: 22px; font-weight: 700; }}
             QLabel#section {{
-                color: {GLASS_TEXT_SUB}; font-size: 12px; font-weight: 600; padding-left: 6px;
+                color: {T.text_sub}; font-size: 12px; font-weight: 600; padding-left: 6px;
             }}
             QScrollArea#scroll, QWidget#content {{ background: transparent; border: none; }}
-            QWidget#card {{ background-color: rgba(255, 255, 255, 0.05); border-radius: 16px; }}
-            QLabel#row_label {{ color: {GLASS_TEXT}; font-size: 13px; }}
-            QLabel#hint {{ color: {GLASS_TEXT_MUTED}; font-size: 11px; }}
-            QWidget#segmented {{ background-color: rgba(255, 255, 255, 0.07); border-radius: 10px; }}
+            QWidget#card {{ background-color: {T.card}; border-radius: 16px; }}
+            QLabel#row_label {{ color: {T.text}; font-size: 13px; }}
+            QLabel#hint {{ color: {T.text_muted}; font-size: 11px; }}
+            QWidget#segmented {{ background-color: {T.segmented}; border-radius: 10px; }}
             QPushButton#segment {{
-                background: transparent; color: {GLASS_TEXT_SUB}; border: none;
+                background: transparent; color: {T.text_sub}; border: none;
                 border-radius: 8px; padding: 5px 11px; font-size: 12px;
             }}
-            QPushButton#segment:hover {{ color: {GLASS_TEXT}; }}
+            QPushButton#segment:hover {{ color: {T.text}; }}
             QPushButton#segment:checked {{
-                background-color: rgba(255, 255, 255, 0.22); color: {GLASS_TEXT}; font-weight: 600;
+                background-color: {T.segment_checked}; color: {T.text}; font-weight: 600;
             }}
-            QPushButton#pill, QPushButton#danger {{
-                background-color: {GLASS_FILL}; color: {GLASS_TEXT}; border: none;
-                border-radius: 14px; padding: 6px 14px; font-size: 12px; font-weight: 600;
-            }}
-            QPushButton#danger {{ color: #ff6961; }}
-            QPushButton#danger:disabled {{ color: {GLASS_TEXT_MUTED}; }}
-            QPushButton#pill:hover, QPushButton#danger:hover {{ background-color: {GLASS_FILL_HOVER}; }}
+            /* Объём, блик и тень кнопок рисует GlassLook (ui/glass_button.py) */
+            QPushButton#pill, QPushButton#danger, QPushButton#pill:hover, QPushButton#danger:hover,
             QPushButton#pill:pressed, QPushButton#danger:pressed {{
-                background-color: {GLASS_FILL_PRESSED};
+                background: transparent; color: {T.text}; border: none;
+                padding: 6px 14px; font-size: 12px; font-weight: 600;
             }}
-            QPushButton#close {{
-                background-color: {GLASS_FILL}; color: {GLASS_TEXT_SUB}; border: none;
-                border-radius: 16px; font-size: 13px;
+            QPushButton#danger, QPushButton#danger:hover, QPushButton#danger:pressed {{ color: {T.danger}; }}
+            QPushButton#danger:disabled {{ color: {T.text_muted}; }}
+            QPushButton#close, QPushButton#close:hover, QPushButton#close:pressed {{
+                background: transparent; color: {T.text_sub}; border: none; font-size: 13px;
             }}
-            QPushButton#close:hover {{ background-color: {GLASS_FILL_HOVER}; color: {GLASS_TEXT}; }}
+            QPushButton#close:hover {{ color: {T.text}; }}
         """
