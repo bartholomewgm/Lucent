@@ -4,6 +4,8 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 Lucent — Windows video player on PyQt6 (Python 3.14, Qt 6.11) with a "Liquid Glass" UI. Code comments, UI strings and README are in Russian; keep it that way.
 
+UI language (Russian / English) lives in `core/i18n.py`: the Russian string in the code is the key, `EN` maps it to English. Wrap every user-visible string in `tr("…")` (use `{}` + `.format()` for values), and for text set once on a long-lived widget use `bind(widget, "setText" | "setToolTip", "…")` so it updates when the language changes (`MainWindow.apply_language`). Texts that depend on state (e.g. «Скрыть/Показать плейлист») use `tr()` and are recomputed in `apply_language`. Add every new string to `EN`.
+
 ## Commands
 
 ```bash

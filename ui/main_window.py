@@ -11,7 +11,7 @@ from PyQt6.QtWidgets import (
     QMessageBox,
     QHBoxLayout,
 )
-from PyQt6.QtCore import Qt, QTimer, QElapsedTimer
+from PyQt6.QtCore import Qt, QTimer, QElapsedTimer, QLibraryInfo, QTranslator
 from PyQt6.QtMultimedia import QMediaPlayer
 from PyQt6.QtGui import QShortcut, QKeySequence, QDragEnterEvent, QDropEvent, QCursor
 
@@ -29,6 +29,7 @@ from ui.styles import T, app_style, set_theme, GLASS_GAP, GLASS_RADIUS
 from core.player import VideoPlayer
 from core.history import HistoryManager
 from core.settings import Settings
+from core.i18n import tr, set_language, retranslate
 from core.folder_playlist import FolderPlaylist
 from core.thumbnailer import Thumbnailer
 from core.ambient import AmbientColors
@@ -77,6 +78,9 @@ class MainWindow(QMainWindow):
         self.settings = Settings(self)
         # Тема — до создания виджетов: они берут цвета из палитры при построении
         set_theme(self.settings.get("theme"))
+        # Язык — тоже до создания виджетов; переводы самого Qt (кнопки «Да/Нет» и т.п.)
+        self._qt_translator = QTranslator(self)
+        self._set_language(self.settings.get("language"))
         self.player = VideoPlayer()
         self.history = HistoryManager()
         self.sidebar = SidebarWidget()
@@ -174,11 +178,7 @@ class MainWindow(QMainWindow):
         # Плейлист: кнопка в нижней панели крутится в такт выезду панели
         self.controls.playlist_button.clicked.connect(self.drawer.toggle)
         self.drawer.openness_changed.connect(self.controls.playlist_button.set_progress)
-        self.drawer.toggled.connect(
-            lambda is_open: self.controls.playlist_button.setToolTip(
-                ("Скрыть" if is_open else "Показать") + " плейлист (Ctrl+L)"
-            )
-        )
+        self.drawer.toggled.connect(self._update_playlist_tooltip)
 
         # Полноэкранная панель
         fs = self.fs_controls
@@ -279,6 +279,8 @@ class MainWindow(QMainWindow):
             self._set_aspect_mode(value)
         elif key == "theme":
             self.apply_theme(value)
+        elif key == "language":
+            self.apply_language(value)
         elif key == "ambient_background":
             self.ambient.enabled = value
             self.ambient.reset()
@@ -321,6 +323,28 @@ class MainWindow(QMainWindow):
             if path != self.current_file_path and not Path(path).exists():
                 self._folder_items.discard(path)
                 self.playlist.remove_path(path)
+
+    def _set_language(self, code: str):
+        set_language(code)
+        app = QApplication.instance()
+        app.removeTranslator(self._qt_translator)
+        path = QLibraryInfo.path(QLibraryInfo.LibraryPath.TranslationsPath)
+        if self._qt_translator.load(f"qtbase_{code}", path):
+            app.installTranslator(self._qt_translator)
+
+    def apply_language(self, code: str):
+        """Сменить язык на лету: постоянные надписи (bind) и те, что зависят от состояния"""
+        self._set_language(code)
+        retranslate()
+        self.title_bar.update_state()
+        self._update_playlist_tooltip(self.drawer.is_open())
+        self._set_skip_seconds(self.settings.get("skip_seconds"))
+        self.controls.set_aspect_text(self.settings.get("aspect_mode"))
+        self.controls.update_track_info(self.current_file_path, self.player.duration())
+
+    def _update_playlist_tooltip(self, is_open: bool):
+        self.controls.playlist_button.setToolTip(
+            tr("Скрыть плейлист (Ctrl+L)" if is_open else "Показать плейлист (Ctrl+L)"))
 
     def apply_theme(self, name: str):
         """Сменить тему на лету: палитра, затем стили всех частей окна"""
@@ -488,8 +512,8 @@ class MainWindow(QMainWindow):
         if not folder or not Path(folder).is_dir():
             folder = self.last_folder
         file_name, _ = QFileDialog.getOpenFileName(
-            self, "Добавить видео", folder,
-            "Видео (*.mp4 *.avi *.mkv *.mov *.wmv *.flv *.webm *.m4v)"
+            self, tr("Добавить видео"), folder,
+            tr("Видео (*.mp4 *.avi *.mkv *.mov *.wmv *.flv *.webm *.m4v)")
         )
         if file_name:
             self.last_folder = str(Path(file_name).parent)
@@ -500,7 +524,7 @@ class MainWindow(QMainWindow):
 
         self._save_progress()
         if not Path(file_path).is_file():
-            QMessageBox.warning(self, "Ошибка", f"Не удалось загрузить видео:\n{file_path}")
+            QMessageBox.warning(self, tr("Ошибка"), tr("Не удалось загрузить видео:\n{}").format(file_path))
             return
 
         # Место продолжения и текущий файл — ДО открытия: ffmpeg может сообщить
@@ -541,7 +565,7 @@ class MainWindow(QMainWindow):
             return 0
         if mode == "ask":
             answer = QMessageBox.question(
-                self, "Lucent", f"Продолжить с {format_time(position)}?\n\n{Path(file_path).stem}"
+                self, "Lucent", tr("Продолжить с {}?\n\n{}").format(format_time(position), Path(file_path).stem)
             )
             if answer != QMessageBox.StandardButton.Yes:
                 return 0
@@ -652,7 +676,7 @@ class MainWindow(QMainWindow):
         self.fs_controls.set_play_button_state(is_playing)
 
     def handle_player_error(self, error_message: str):
-        QMessageBox.critical(self, "Ошибка плеера", error_message)
+        QMessageBox.critical(self, tr("Ошибка плеера"), error_message)
 
     def _save_progress(self):
         """Запомнить место остановки; досмотренное видео — с начала"""

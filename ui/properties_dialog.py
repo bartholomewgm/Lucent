@@ -12,6 +12,7 @@ from ui.controls import format_time
 from ui.glass import GlassPanel
 from ui.glass_button import GlassLook
 from ui.styles import T
+from core.i18n import language, tr
 
 CHANNELS = {1: "1 (моно)", 2: "2 (стерео)", 6: "6 (5.1)", 8: "8 (7.1)"}
 
@@ -26,7 +27,8 @@ def _text(value) -> str:
 
 def _number(value: float, digits: int = 2) -> str:
     """59.94 -> «59,94», 30.0 -> «30»"""
-    return f"{value:.{digits}f}".rstrip("0").rstrip(".").replace(".", ",")
+    text = f"{value:.{digits}f}".rstrip("0").rstrip(".")
+    return text.replace(".", ",") if language() == "ru" else text
 
 
 def _size(size) -> str:
@@ -34,14 +36,16 @@ def _size(size) -> str:
         return ""
     for unit, factor in (("ГБ", 1024 ** 3), ("МБ", 1024 ** 2), ("КБ", 1024)):
         if size >= factor:
-            return f"{_number(size / factor, 1)} {unit}"
-    return f"{size} Б"
+            return f"{_number(size / factor, 1)} {tr(unit)}"
+    return tr("{} Б").format(size)
 
 
 def _bitrate(bps) -> str:
     if not bps:
         return ""
-    return f"{_number(bps / 1_000_000, 1)} Мбит/с" if bps >= 1_000_000 else f"{round(bps / 1000)} кбит/с"
+    if bps >= 1_000_000:
+        return tr("{} Мбит/с").format(_number(bps / 1_000_000, 1))
+    return tr("{} кбит/с").format(round(bps / 1000))
 
 
 def describe(info: dict) -> list:
@@ -57,8 +61,8 @@ def describe(info: dict) -> list:
     codecs = " / ".join(c.name for c in (info.get("video_codec"), info.get("audio_codec"))
                         if c is not None and c.name not in ("Unspecified",))
     bitrates = " · ".join(filter(None, (
-        _bitrate(info.get("video_bitrate")) and f"видео {_bitrate(info.get('video_bitrate'))}",
-        _bitrate(info.get("audio_bitrate")) and f"звук {_bitrate(info.get('audio_bitrate'))}",
+        _bitrate(info.get("video_bitrate")) and tr("видео {}").format(_bitrate(info.get("video_bitrate"))),
+        _bitrate(info.get("audio_bitrate")) and tr("звук {}").format(_bitrate(info.get("audio_bitrate"))),
     )))
     channels = info.get("channels")
     return [
@@ -71,7 +75,7 @@ def describe(info: dict) -> list:
         ("Разрешение", f"{resolution.width()} × {resolution.height()}"
          if resolution is not None and resolution.isValid() else ""),
         ("Частота кадров", _number(info["frame_rate"]) if info.get("frame_rate") else ""),
-        ("Звуковые каналы", CHANNELS.get(channels, str(channels)) if channels else ""),
+        ("Звуковые каналы", tr(CHANNELS.get(channels, str(channels))) if channels else ""),
         ("Тип элемента", path.suffix.lower()),
         ("Размер", _size(info.get("size"))),
         ("Кодеки", codecs),
@@ -100,7 +104,7 @@ class PropertiesDialog(QDialog):
         layout.setContentsMargins(28, 20, 28, 22)
         layout.setSpacing(14)
 
-        title = QLabel("Свойства")
+        title = QLabel(tr("Свойства"))
         title.setObjectName("title")
         layout.addWidget(title)
 
@@ -112,7 +116,7 @@ class PropertiesDialog(QDialog):
         for index, (name, _) in enumerate(describe({"path": self.path})):
             cell = QVBoxLayout()
             cell.setSpacing(2)
-            label = QLabel(name)
+            label = QLabel(tr(name))  # ключи полей — русские, подпись — на текущем языке
             label.setObjectName("field")
             value = QLabel("…")
             value.setObjectName("value")
@@ -129,7 +133,7 @@ class PropertiesDialog(QDialog):
         # Расположение — на всю ширину, путь целиком
         place = QVBoxLayout()
         place.setSpacing(2)
-        place_label = QLabel("Расположение файла")
+        place_label = QLabel(tr("Расположение файла"))
         place_label.setObjectName("field")
         place_value = QLabel(self.path)
         place_value.setObjectName("value")
@@ -139,7 +143,7 @@ class PropertiesDialog(QDialog):
         place.addWidget(place_value)
         layout.addLayout(place)
 
-        folder_link = QPushButton("Открыть папку с файлом")
+        folder_link = QPushButton(tr("Открыть папку с файлом"))
         folder_link.setObjectName("link")
         folder_link.setCursor(Qt.CursorShape.PointingHandCursor)
         folder_link.setFocusPolicy(Qt.FocusPolicy.NoFocus)
@@ -149,7 +153,7 @@ class PropertiesDialog(QDialog):
         link_row.addStretch()
         layout.addLayout(link_row)
 
-        close = QPushButton("Закрыть")
+        close = QPushButton(tr("Закрыть"))
         close.setObjectName("close")
         close.setFixedSize(200, 36)
         close.setCursor(Qt.CursorShape.PointingHandCursor)

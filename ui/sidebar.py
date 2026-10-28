@@ -1,4 +1,5 @@
 from PyQt6.QtWidgets import QVBoxLayout, QPushButton, QWidget
+from core.i18n import bind
 from PyQt6.QtCore import Qt, pyqtSignal, pyqtProperty, QPropertyAnimation, QEasingCurve
 
 from ui.glass import GlassPanel
@@ -27,7 +28,7 @@ class SidebarWidget(GlassPanel):
         self.open_button.setCursor(Qt.CursorShape.PointingHandCursor)
         self.open_button.setFocusPolicy(Qt.FocusPolicy.NoFocus)
         self.open_button.setFixedHeight(46)
-        self.open_button.setToolTip("Добавить видео (Ctrl+O)")
+        bind(self.open_button, "setToolTip", "Добавить видео (Ctrl+O)")
         self.open_button.clicked.connect(self.open_clicked.emit)
         GlassLook(self.open_button)
         layout.addWidget(self.open_button)

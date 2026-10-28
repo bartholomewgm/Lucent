@@ -33,6 +33,7 @@ from ui.glass import GlassPanel
 from ui.glass_button import GlassLook
 from ui.video_frame import ASPECT_MODES
 from ui.styles import T, THEME_NAMES
+from core.i18n import LANGUAGES, bind, tr
 
 
 class ToggleSwitch(QAbstractButton):
@@ -102,7 +103,8 @@ class SegmentedControl(QWidget):
         self._group = QButtonGroup(self)
         self._values = []
         for label, value in options:
-            btn = QPushButton(label)
+            btn = QPushButton()
+            bind(btn, "setText", label)
             btn.setCheckable(True)
             btn.setCursor(Qt.CursorShape.PointingHandCursor)
             btn.setFocusPolicy(Qt.FocusPolicy.NoFocus)
@@ -123,6 +125,7 @@ class SettingsDialog(QDialog):
     def __init__(self, settings, parent=None):
         super().__init__(parent)
         self.settings = settings
+        self._folder_updates = []  # обновить подписи папок при смене языка
         self.setWindowFlags(
             Qt.WindowType.Dialog
             | Qt.WindowType.FramelessWindowHint
@@ -170,14 +173,15 @@ class SettingsDialog(QDialog):
     # ----- Построение -----
 
     def _header(self):
-        title = QLabel("Настройки")
+        title = QLabel()
+        bind(title, "setText", "Настройки")
         title.setObjectName("title")
         close = QPushButton("✕")
         close.setObjectName("close")
         close.setFixedSize(32, 32)
         close.setCursor(Qt.CursorShape.PointingHandCursor)
         close.setFocusPolicy(Qt.FocusPolicy.NoFocus)
-        close.setToolTip("Закрыть (Esc)")
+        bind(close, "setToolTip", "Закрыть (Esc)")
         close.clicked.connect(self.accept)
         GlassLook(close)
         row = QHBoxLayout()
@@ -187,7 +191,8 @@ class SettingsDialog(QDialog):
         return row
 
     def _section(self, layout, name: str):
-        label = QLabel(name)
+        label = QLabel()
+        bind(label, "setText", name)
         label.setObjectName("section")
         layout.addSpacing(4)
         layout.addWidget(label)
@@ -206,11 +211,13 @@ class SettingsDialog(QDialog):
         row_layout.setContentsMargins(0, 6, 0, 6)
         labels = QVBoxLayout()
         labels.setSpacing(1)
-        label = QLabel(text)
+        label = QLabel()
+        bind(label, "setText", text)
         label.setObjectName("row_label")
         labels.addWidget(label)
         if hint:
-            hint_label = QLabel(hint)
+            hint_label = QLabel()
+            bind(hint_label, "setText", hint)
             hint_label.setObjectName("hint")
             hint_label.setWordWrap(True)  # длинная подсказка не раздвигает окно
             labels.addWidget(hint_label)
@@ -226,11 +233,13 @@ class SettingsDialog(QDialog):
         row_layout = QVBoxLayout(row)
         row_layout.setContentsMargins(0, 6, 0, 8)
         row_layout.setSpacing(6)
-        label = QLabel(text)
+        label = QLabel()
+        bind(label, "setText", text)
         label.setObjectName("row_label")
         row_layout.addWidget(label)
         if hint:
-            hint_label = QLabel(hint)
+            hint_label = QLabel()
+            bind(hint_label, "setText", hint)
             hint_label.setObjectName("hint")
             hint_label.setWordWrap(True)  # длинная подсказка не раздвигает окно
             row_layout.addWidget(hint_label)
@@ -262,6 +271,7 @@ class SettingsDialog(QDialog):
                   "Громкость при следующем запуске будет той же")
 
         card = self._section(layout, "Оформление")
+        self._row(card, "Язык", self._segmented("language", list(LANGUAGES)))
         self._row(card, "Тема", self._segmented("theme", [(label, value) for label, value in THEME_NAMES]),
                   "Светлая и тёмная: цвета видео — только вокруг него")
         self._stacked_row(card, "Формат картинки", self._segmented(
@@ -297,6 +307,9 @@ class SettingsDialog(QDialog):
                   "Места остановки во всех видео")
 
     def _on_setting_changed(self, key, _value):
+        if key == "language":  # bind-надписи уже переведены MainWindow; остались папки
+            for refresh in self._folder_updates:
+                refresh()
         if key == "theme":
             self.setStyleSheet(self._styles())
             GlassLook.retheme_all()
@@ -305,7 +318,8 @@ class SettingsDialog(QDialog):
             self.update()
 
     def _pill(self, text: str, slot):
-        btn = QPushButton(text)
+        btn = QPushButton()
+        bind(btn, "setText", text)
         btn.setObjectName("pill")
         btn.setCursor(Qt.CursorShape.PointingHandCursor)
         btn.setFocusPolicy(Qt.FocusPolicy.NoFocus)
@@ -332,31 +346,32 @@ class SettingsDialog(QDialog):
 
         def update(folder: str):
             self.settings.set(key, folder)
-            hint.setText((folder if len(folder) <= 46 else "…" + folder[-45:]) if folder else empty_text)
+            hint.setText((folder if len(folder) <= 46 else "…" + folder[-45:]) if folder else tr(empty_text))
             hint.setToolTip(folder)
             reset.setVisible(bool(folder))
 
         def pick():
             start = self.settings.get(key) or str(Path.home())
-            folder = QFileDialog.getExistingDirectory(self, title, start)
+            folder = QFileDialog.getExistingDirectory(self, tr(title), start)
             if folder:
                 update(folder)
 
         update(self.settings.get(key))
+        self._folder_updates.append(lambda: update(self.settings.get(key)))
 
     def _set_autostart(self, enabled: bool):
         try:
             autostart.set_enabled(enabled)
         except OSError as e:
-            QMessageBox.warning(self, "Lucent", f"Не удалось изменить автозапуск:\n{e}")
+            QMessageBox.warning(self, "Lucent", tr("Не удалось изменить автозапуск:\n{}").format(e))
 
     def _clear_history(self):
         answer = QMessageBox.question(
-            self, "Lucent", "Очистить историю просмотров?\nМеста остановки во всех видео забудутся."
+            self, "Lucent", tr("Очистить историю просмотров?\nМеста остановки во всех видео забудутся.")
         )
         if answer == QMessageBox.StandardButton.Yes:
             self.history_cleared.emit()
-            self.clear_button.setText("Очищено")
+            bind(self.clear_button, "setText", "Очищено")
             self.clear_button.setEnabled(False)
 
     # ----- Перетаскивание окна за любое пустое место -----

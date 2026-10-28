@@ -14,6 +14,7 @@ from pathlib import Path
 from PyQt6.QtGui import QIcon
 from PyQt6.QtWidgets import QApplication, QMessageBox
 from ui.main_window import MainWindow
+from core.i18n import tr
 
 APP_NAME = "Lucent"
 # В собранном приложении файлы лежат в папке распаковки PyInstaller
@@ -25,7 +26,7 @@ def exception_hook(exc_type, exc_value, exc_tb):
     """Глобальный обработчик непойманных исключений"""
     error_msg = ''.join(traceback.format_exception(exc_type, exc_value, exc_tb))
     print(error_msg)
-    QMessageBox.critical(None, "Критическая ошибка", f"Программа упала:\n{error_msg}")
+    QMessageBox.critical(None, tr("Критическая ошибка"), tr("Программа упала:\n{}").format(error_msg))
 
 
 def main():

@@ -12,6 +12,7 @@ from PyQt6.QtCore import (
     Qt,
 )
 from PyQt6.QtWidgets import QHBoxLayout, QLabel, QSlider, QVBoxLayout, QWidget
+from core.i18n import bind
 
 from ui.controls import (
     SeekSlider,
@@ -80,11 +81,11 @@ class FullscreenControls(GlassPanel):
 
         # ----- Кнопки: звук и громкость | навигация | выход из полного экрана -----
         self.mute_button = make_icon_btn(Icons.VOLUME, 36)
-        self.mute_button.setToolTip("Без звука (M)")
+        bind(self.mute_button, "setToolTip", "Без звука (M)")
         self.volume_slider = QSlider(Qt.Orientation.Horizontal)
         self.volume_slider.setRange(0, 100)
         self.volume_slider.setValue(50)
-        self.volume_slider.setToolTip("Громкость (↑/↓)")
+        bind(self.volume_slider, "setToolTip", "Громкость (↑/↓)")
 
         left = QWidget()
         left.setFixedWidth(self.SIDE_WIDTH)
@@ -95,15 +96,15 @@ class FullscreenControls(GlassPanel):
         left_layout.addWidget(self.volume_slider)
 
         self.prev_button = make_control_btn(Icons.PREVIOUS, 40)
-        self.prev_button.setToolTip("Предыдущее (P)")
+        bind(self.prev_button, "setToolTip", "Предыдущее (P)")
         self.rewind_button = SkipButton(skip_seconds, forward=False, palette=OVERLAY)
         self.play_button = make_play_btn(OVERLAY)
         self.skip_button = SkipButton(skip_seconds, forward=True, palette=OVERLAY)
         self.next_button = make_control_btn(Icons.NEXT, 40)
-        self.next_button.setToolTip("Следующее (N)")
+        bind(self.next_button, "setToolTip", "Следующее (N)")
 
         self.exit_button = make_icon_btn(Icons.EXIT_FULLSCREEN, 36)
-        self.exit_button.setToolTip("Выйти из полного экрана (Esc)")
+        bind(self.exit_button, "setToolTip", "Выйти из полного экрана (Esc)")
 
         right = QWidget()
         right.setFixedWidth(self.SIDE_WIDTH)

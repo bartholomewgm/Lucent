@@ -2,6 +2,7 @@ from pathlib import Path
 
 from PyQt6.QtWidgets import QListWidget, QListWidgetItem, QWidget, QLabel, QVBoxLayout
 from PyQt6.QtCore import Qt, pyqtSignal
+from core.i18n import tr
 
 from ui.glass import make_glass_menu
 from ui.styles import T
@@ -56,8 +57,8 @@ class PlaylistWidget(QListWidget):
             return
         path = item.data(Qt.ItemDataRole.UserRole)
         menu = make_glass_menu(self)
-        properties = menu.addAction("Свойства")
-        remove = menu.addAction("Удалить из очереди")
+        properties = menu.addAction(tr("Свойства"))
+        remove = menu.addAction(tr("Удалить из очереди"))
         chosen = menu.exec(self.viewport().mapToGlobal(pos))
         if chosen == properties:
             self.properties_requested.emit(str(path))

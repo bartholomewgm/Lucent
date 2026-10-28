@@ -11,6 +11,7 @@ from PyQt6.QtWidgets import (
     QStyle,
     QStyleOptionSlider,
 )
+from core.i18n import bind, tr
 from PyQt6.QtCore import Qt, QPointF, QRectF, QElapsedTimer, pyqtSignal
 from PyQt6.QtGui import QFont, QPainter, QPen
 
@@ -39,7 +40,7 @@ def make_control_btn(glyph: str, size: int) -> QPushButton:
 def make_play_btn(palette=None) -> QPushButton:
     btn = make_icon_btn(Icons.PLAY, 48)
     btn.setObjectName("play_btn")
-    btn.setToolTip("Воспроизвести (Пробел)")
+    bind(btn, "setToolTip", "Воспроизвести (Пробел)")
     GlassLook(btn, kind="play", palette=palette)  # объёмная, с мягкой тенью
     return btn
 
@@ -223,8 +224,8 @@ class SkipButton(QPushButton):
 
     def set_seconds(self, seconds: int):
         self.seconds = seconds
-        direction = "Вперёд" if self.forward else "Назад"
-        self.setToolTip(f"{direction} на {seconds} сек")
+        text = "Вперёд на {} сек" if self.forward else "Назад на {} сек"
+        self.setToolTip(tr(text).format(seconds))
         self.update()
 
     def paintEvent(self, event):
@@ -326,7 +327,7 @@ class ControlsWidget(GlassPanel):
         # Обложка и название открывают «Свойства» видео
         for widget in (self.cover, self.title_label, self.subtitle_label):
             widget.setCursor(Qt.CursorShape.PointingHandCursor)
-            widget.setToolTip("Свойства (Ctrl+I)")
+            bind(widget, "setToolTip", "Свойства (Ctrl+I)")
             widget.installEventFilter(self)
         self.setup_aspect_menu()
         self.apply_theme()
@@ -348,7 +349,7 @@ class ControlsWidget(GlassPanel):
 
         # ----- 2. ЛЕВАЯ ЧАСТЬ: обложка + информация о видео -----
         self.playlist_button = PlaylistToggleButton()
-        self.playlist_button.setToolTip("Скрыть плейлист (Ctrl+L)")
+        bind(self.playlist_button, "setToolTip", "Скрыть плейлист (Ctrl+L)")
 
         self.cover = CoverArtWidget(56)
 
@@ -377,10 +378,10 @@ class ControlsWidget(GlassPanel):
 
         # ----- 3. ЦЕНТР: кнопки управления -----
         self.prev_button = make_control_btn(Icons.PREVIOUS, 40)
-        self.prev_button.setToolTip("Предыдущее (P)")
+        bind(self.prev_button, "setToolTip", "Предыдущее (P)")
         self.play_button = make_play_btn()
         self.next_button = make_control_btn(Icons.NEXT, 40)
-        self.next_button.setToolTip("Следующее (N)")
+        bind(self.next_button, "setToolTip", "Следующее (N)")
         self.rewind_button = SkipButton(self.SKIP_SECONDS, forward=False)
         self.skip_button = SkipButton(self.SKIP_SECONDS, forward=True)
 
@@ -404,30 +405,30 @@ class ControlsWidget(GlassPanel):
         self.speed_button.setFixedSize(52, 30)
         self.speed_button.setCursor(Qt.CursorShape.PointingHandCursor)
         self.speed_button.setFocusPolicy(Qt.FocusPolicy.NoFocus)
-        self.speed_button.setToolTip("Скорость ([ / ])")
+        bind(self.speed_button, "setToolTip", "Скорость ([ / ])")
         GlassLook(self.speed_button)
 
-        self.aspect_button = QPushButton("Авто")
+        self.aspect_button = QPushButton(tr("Авто"))
         self.aspect_button.setObjectName("pill_btn")
         self.aspect_button.setMinimumWidth(52)
         self.aspect_button.setFixedHeight(30)
         self.aspect_button.setCursor(Qt.CursorShape.PointingHandCursor)
         self.aspect_button.setFocusPolicy(Qt.FocusPolicy.NoFocus)
-        self.aspect_button.setToolTip("Формат картинки (A)")
+        bind(self.aspect_button, "setToolTip", "Формат картинки (A)")
         self.aspect_button.setStyleSheet("padding: 0 12px;")
         GlassLook(self.aspect_button)
 
         self.mute_button = make_icon_btn(Icons.VOLUME, 34)
-        self.mute_button.setToolTip("Без звука (M)")
+        bind(self.mute_button, "setToolTip", "Без звука (M)")
 
         self.volume_slider = QSlider(Qt.Orientation.Horizontal)
         self.volume_slider.setRange(0, 100)
         self.volume_slider.setValue(50)
         self.volume_slider.setFixedWidth(100)
-        self.volume_slider.setToolTip("Громкость (↑/↓)")
+        bind(self.volume_slider, "setToolTip", "Громкость (↑/↓)")
 
         self.fullscreen_button = make_icon_btn(Icons.FULLSCREEN, 34)
-        self.fullscreen_button.setToolTip("Полный экран (F)")
+        bind(self.fullscreen_button, "setToolTip", "Полный экран (F)")
 
         right_layout = QHBoxLayout()
         right_layout.setSpacing(8)
@@ -483,7 +484,8 @@ class ControlsWidget(GlassPanel):
     def setup_aspect_menu(self):
         self.aspect_menu = make_glass_menu(self)
         for label, value, _ in ASPECT_MODES:
-            action = self.aspect_menu.addAction(label)
+            action = self.aspect_menu.addAction("")
+            bind(action, "setText", label)
             action.triggered.connect(lambda _=False, v=value: self.aspect_changed.emit(v))
         self.aspect_button.clicked.connect(self._show_aspect_menu)
 
@@ -492,7 +494,7 @@ class ControlsWidget(GlassPanel):
         self.aspect_menu.exec(pos)
 
     def set_aspect_text(self, mode: str):
-        label = next((lbl for lbl, value, _ in ASPECT_MODES if value == mode), "Авто")
+        label = tr(next((lbl for lbl, value, _ in ASPECT_MODES if value == mode), "Авто"))
         self.aspect_button.setText(label)
 
     def _show_speed_menu(self):
@@ -545,8 +547,8 @@ class ControlsWidget(GlassPanel):
 
     def update_track_info(self, file_path: str | None, duration_ms: int = 0):
         if not file_path:
-            self.title_label.setText("Ничего не воспроизводится")
-            self.subtitle_label.setText("Откройте видео, чтобы начать")
+            self.title_label.setText(tr("Ничего не воспроизводится"))
+            self.subtitle_label.setText(tr("Откройте видео, чтобы начать"))
             self.cover.set_placeholder()
             return
 

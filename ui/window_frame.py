@@ -12,6 +12,7 @@ from ctypes import wintypes
 from PyQt6.QtCore import QPoint, Qt
 from PyQt6.QtGui import QPixmap
 from PyQt6.QtWidgets import QApplication, QHBoxLayout, QLabel, QPushButton, QWidget
+from core.i18n import bind, tr
 
 from ui.styles import T, ICON_FONT, Icons
 
@@ -144,7 +145,7 @@ class TitleBar(QWidget):
         self.settings_button.setObjectName("settings_btn")
         self.settings_button.setFixedSize(36, 32)
         self.settings_button.setFocusPolicy(Qt.FocusPolicy.NoFocus)
-        self.settings_button.setToolTip("Настройки (Ctrl+,)")
+        bind(self.settings_button, "setToolTip", "Настройки (Ctrl+,)")
 
         layout = QHBoxLayout(self)
         layout.setContentsMargins(self.LEFT_INSET, 0, 0, 0)  # справа — вплотную к краю окна
@@ -184,7 +185,7 @@ class TitleBar(QWidget):
         btn = QPushButton(glyph)
         btn.setFixedSize(46, 32)
         btn.setFocusPolicy(Qt.FocusPolicy.NoFocus)
-        btn.setToolTip(tip)
+        bind(btn, "setToolTip", tip)
         btn.clicked.connect(slot)
         return btn
 
@@ -197,7 +198,7 @@ class TitleBar(QWidget):
     def update_state(self):
         maximized = self._window.isMaximized()
         self.max_button.setText("\uE923" if maximized else "\uE922")
-        self.max_button.setToolTip("Свернуть в окно" if maximized else "Развернуть")
+        self.max_button.setToolTip(tr("Свернуть в окно" if maximized else "Развернуть"))
 
     def mousePressEvent(self, event):
         # На Windows перетаскивание делает система (HTCAPTION); это — для других ОС

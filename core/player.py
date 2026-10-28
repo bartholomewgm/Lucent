@@ -7,6 +7,7 @@ from pathlib import Path
 
 from PyQt6.QtCore import QUrl, pyqtSignal, QObject
 from PyQt6.QtMultimedia import QMediaPlayer, QAudioOutput
+from core.i18n import tr
 
 
 class VideoPlayer(QObject):
@@ -52,12 +53,12 @@ class VideoPlayer(QObject):
         """Загружает видео файл"""
         try:
             if not Path(file_path).is_file():
-                self.error_occurred.emit(f"Файл не найден: {file_path}")
+                self.error_occurred.emit(tr("Файл не найден: {}").format(file_path))
                 return False
             self.player.setSource(QUrl.fromLocalFile(file_path))
             return True
         except Exception as e:
-            self.error_occurred.emit(f"Ошибка загрузки: {str(e)}")
+            self.error_occurred.emit(tr("Ошибка загрузки: {}").format(e))
             return False
 
     # ========== УПРАВЛЕНИЕ ==========
@@ -117,7 +118,7 @@ class VideoPlayer(QObject):
     
     def _on_error(self, error, error_string):
         """Обработчик ошибок QMediaPlayer"""
-        self.error_occurred.emit(f"Ошибка: {error_string}")
+        self.error_occurred.emit(tr("Ошибка: {}").format(error_string))
     
     def _on_position_changed(self, position):
         """Прокси-обработчик для позиции"""
