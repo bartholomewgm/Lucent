@@ -10,8 +10,7 @@ import sys
 from ctypes import wintypes
 
 from PyQt6.QtCore import QPoint, Qt
-from PyQt6.QtGui import QPixmap
-from PyQt6.QtWidgets import QApplication, QHBoxLayout, QLabel, QPushButton, QWidget
+from PyQt6.QtWidgets import QHBoxLayout, QPushButton, QWidget
 from core.i18n import bind, tr
 
 from ui.styles import T, ICON_FONT, Icons
@@ -76,7 +75,10 @@ def handle_native_event(window, title_bar, message):
     if msg.message == WM_NCCALCSIZE and msg.wParam:
         # Весь прямоугольник окна — клиентская область (заголовка Windows нет).
         # Развёрнутое окно Windows выдвигает за экран на толщину рамки — поджимаем.
-        if window.isMaximized() and not window.isFullScreen():
+        # Состояние берём у самой Windows (IsZoomed): когда окно восстанавливают
+        # двойным кликом, Snap или с панели задач, Qt ещё считает его развёрнутым,
+        # и без этого у обычного окна оставался отступ — белая полоса сверху.
+        if ctypes.windll.user32.IsZoomed(msg.hWnd) and not window.isFullScreen():
             params = NCCALCSIZE_PARAMS.from_address(msg.lParam)
             inset = _frame_thickness(msg.hWnd)
             rect = params.rgrc[0]
@@ -117,24 +119,14 @@ def handle_native_event(window, title_bar, message):
 
 
 class TitleBar(QWidget):
-    """Заголовок: значок и название слева, кнопки окна справа"""
+    """Заголовок: пустая полоса для перетаскивания, справа настройки и кнопки окна"""
 
     HEIGHT = 32          # как у заголовка Windows 11
-    LEFT_INSET = 26      # значок — на одной линии с содержимым окна
 
     def __init__(self, window):
         super().__init__()
         self._window = window
         self.setFixedHeight(self.HEIGHT)
-
-        icon = QLabel()
-        app_icon = QApplication.windowIcon()
-        if not app_icon.isNull():
-            icon.setPixmap(app_icon.pixmap(18, 18))
-        else:
-            icon.setPixmap(QPixmap())
-        title = QLabel("Lucent")
-        title.setObjectName("window_title")
 
         self.min_button = self._button("\uE921", "Свернуть", window.showMinimized)
         self.max_button = self._button("\uE922", "Развернуть", self._toggle_maximized)
@@ -148,10 +140,8 @@ class TitleBar(QWidget):
         bind(self.settings_button, "setToolTip", "Настройки (Ctrl+,)")
 
         layout = QHBoxLayout(self)
-        layout.setContentsMargins(self.LEFT_INSET, 0, 0, 0)  # справа — вплотную к краю окна
+        layout.setContentsMargins(0, 0, 0, 0)  # справа — вплотную к краю окна
         layout.setSpacing(8)
-        layout.addWidget(icon)
-        layout.addWidget(title)
         layout.addStretch()
         layout.addWidget(self.settings_button)
         layout.addSpacing(8)
@@ -165,7 +155,6 @@ class TitleBar(QWidget):
 
     def apply_theme(self):
         self.setStyleSheet(f"""
-            QLabel#window_title {{ color: {T.text_sub}; font-size: 12px; }}
             QPushButton {{
                 background: transparent; color: {T.text}; border: none;
                 border-radius: 0; font-family: {ICON_FONT}; font-size: 10px;
