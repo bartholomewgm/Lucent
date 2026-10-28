@@ -6,14 +6,14 @@
 from pathlib import Path
 
 from PyQt6.QtCore import (
-    QEasingCurve,
-    QPropertyAnimation,
+    QEvent,
+    QPointF,
     QRectF,
+    QSize,
     Qt,
-    pyqtProperty,
     pyqtSignal,
 )
-from PyQt6.QtGui import QColor, QPainter
+from PyQt6.QtGui import QColor, QFont, QFontMetrics, QPainter, QPen
 from PyQt6.QtWidgets import (
     QAbstractButton,
     QButtonGroup,
@@ -30,7 +30,8 @@ from PyQt6.QtWidgets import (
 
 from core import autostart
 from ui.glass import GlassPanel
-from ui.glass_button import GlassLook
+from ui.anim import SmoothAnimation
+from ui.glass_button import GlassLook, paint_glass, paint_glass_shadow
 from ui.video_frame import ASPECT_MODES
 from ui.styles import T, THEME_NAMES
 from core.i18n import LANGUAGES, bind, tr
@@ -47,9 +48,9 @@ class ToggleSwitch(QAbstractButton):
         self.setCursor(Qt.CursorShape.PointingHandCursor)
         self.setFocusPolicy(Qt.FocusPolicy.NoFocus)
         self._offset = 1.0 if checked else 0.0
-        self._anim = QPropertyAnimation(self, b"offset", self)
-        self._anim.setDuration(180)
-        self._anim.setEasingCurve(QEasingCurve.Type.OutCubic)
+        self._from = self._to = self._offset
+        self._anim = SmoothAnimation(200, self)
+        self._anim.step.connect(lambda t: self.set_offset(self._from + (self._to - self._from) * t))
         self.toggled.connect(self._animate)
 
     def get_offset(self) -> float:
@@ -59,12 +60,8 @@ class ToggleSwitch(QAbstractButton):
         self._offset = value
         self.update()
 
-    offset = pyqtProperty(float, fget=get_offset, fset=set_offset)
-
     def _animate(self, checked: bool):
-        self._anim.stop()
-        self._anim.setStartValue(self._offset)
-        self._anim.setEndValue(1.0 if checked else 0.0)
+        self._from, self._to = self._offset, (1.0 if checked else 0.0)
         self._anim.start()
 
     def paintEvent(self, event):
@@ -88,10 +85,57 @@ class ToggleSwitch(QAbstractButton):
         p.drawEllipse(QRectF(x, 3, knob, knob))
 
 
+class Segment(QPushButton):
+    """Сегмент переключателя. Ширина — по полужирной надписи, чтобы выбранный
+    вариант (он полужирный) не обрезался и сегменты не прыгали при выборе"""
+
+    PADDING = 14
+
+    def sizeHint(self):
+        bold = QFont(self.font())
+        bold.setWeight(QFont.Weight.DemiBold)
+        width = QFontMetrics(bold).horizontalAdvance(self.text()) + 2 * self.PADDING
+        return QSize(max(width, 44), 28)
+
+    def minimumSizeHint(self):
+        return self.sizeHint()
+
+
+class CloseButton(QPushButton):
+    """Круглая стеклянная кнопка с крестиком, нарисованным точно по центру"""
+
+    def __init__(self):
+        super().__init__()
+        self.setFixedSize(32, 32)
+        self.setCursor(Qt.CursorShape.PointingHandCursor)
+        self.setFocusPolicy(Qt.FocusPolicy.NoFocus)
+        self.setObjectName("close")
+        GlassLook(self)
+
+    def paintEvent(self, event):
+        super().paintEvent(event)
+        p = QPainter(self)
+        p.setRenderHint(QPainter.RenderHint.Antialiasing)
+        pen = QPen(T.color("text" if self.underMouse() else "text_sub"), 1.6)
+        pen.setCapStyle(Qt.PenCapStyle.RoundCap)
+        p.setPen(pen)
+        c = QRectF(self.rect()).center()
+        r = 4.5
+        p.drawLine(QPointF(c.x() - r, c.y() - r), QPointF(c.x() + r, c.y() + r))
+        p.drawLine(QPointF(c.x() - r, c.y() + r), QPointF(c.x() + r, c.y() - r))
+
+
 class SegmentedControl(QWidget):
-    """Выбор одного варианта из нескольких — сегменты в стеклянной «капсуле»"""
+    """
+    Выбор одного варианта из нескольких — сегменты в стеклянной «капсуле».
+    Объёмная подложка выбранного варианта одна на весь переключатель и плавно
+    переезжает под выбранный вариант: рисуется здесь же, с дробными координатами,
+    и анимируется с частотой кадров монитора — без рывков по целым пикселям.
+    """
 
     changed = pyqtSignal(object)
+    SLIDE_MS = 280
+    RADIUS = 8
 
     def __init__(self, options, current):
         super().__init__()
@@ -100,20 +144,72 @@ class SegmentedControl(QWidget):
         layout = QHBoxLayout(self)
         layout.setContentsMargins(3, 3, 3, 3)
         layout.setSpacing(2)
+        self._thumb = None              # QRectF подложки сейчас
+        self._from = self._to = None    # откуда и куда она едет
+        self._slide = SmoothAnimation(self.SLIDE_MS, self)
+        self._slide.step.connect(self._on_slide)
+
         self._group = QButtonGroup(self)
         self._values = []
         for label, value in options:
-            btn = QPushButton()
+            btn = Segment()
             bind(btn, "setText", label)
             btn.setCheckable(True)
             btn.setCursor(Qt.CursorShape.PointingHandCursor)
             btn.setFocusPolicy(Qt.FocusPolicy.NoFocus)
             btn.setObjectName("segment")
             btn.setChecked(value == current)
+            btn.installEventFilter(self)  # сменился размер (язык) — подложка следом
             self._group.addButton(btn, len(self._values))
             self._values.append(value)
             layout.addWidget(btn)
-        self._group.idClicked.connect(lambda i: self.changed.emit(self._values[i]))
+        self._group.idClicked.connect(self._on_clicked)
+
+    def _target(self):
+        btn = self._group.checkedButton()
+        return QRectF(btn.geometry()) if btn else None
+
+    def _on_clicked(self, index: int):
+        target = self._target()
+        if self._thumb is not None and self.isVisible():
+            self._from, self._to = QRectF(self._thumb), target
+            self._slide.start()
+        else:
+            self._snap()
+        self.changed.emit(self._values[index])
+
+    def _on_slide(self, t: float):
+        a, b = self._from, self._to
+        self._thumb = QRectF(a.x() + (b.x() - a.x()) * t, a.y() + (b.y() - a.y()) * t,
+                             a.width() + (b.width() - a.width()) * t,
+                             a.height() + (b.height() - a.height()) * t)
+        self.update()
+
+    def _snap(self):
+        if self._slide.is_running():
+            self._to = self._target()  # разметка сдвинулась на ходу — едем в новое место
+        else:
+            self._thumb = self._target()
+            self.update()
+
+    def eventFilter(self, obj, event):
+        if event.type() in (QEvent.Type.Resize, QEvent.Type.Move) and obj is self._group.checkedButton():
+            self._snap()
+        return False
+
+    def resizeEvent(self, event):
+        super().resizeEvent(event)
+        self._snap()
+
+    def paintEvent(self, event):
+        # фон «капсулы» — из стилей (WA_StyledBackground), здесь — только подложка
+        if self._thumb is None:
+            return
+        p = QPainter(self)
+        p.setRenderHint(QPainter.RenderHint.Antialiasing)
+        rect = self._thumb.adjusted(0.5, 0.5, -0.5, -0.5)
+        paint_glass_shadow(p, rect, self.RADIUS)
+        paint_glass(p, rect, self.RADIUS, kind="segment")
 
 
 class SettingsDialog(QDialog):
@@ -176,14 +272,9 @@ class SettingsDialog(QDialog):
         title = QLabel()
         bind(title, "setText", "Настройки")
         title.setObjectName("title")
-        close = QPushButton("✕")
-        close.setObjectName("close")
-        close.setFixedSize(32, 32)
-        close.setCursor(Qt.CursorShape.PointingHandCursor)
-        close.setFocusPolicy(Qt.FocusPolicy.NoFocus)
+        close = CloseButton()
         bind(close, "setToolTip", "Закрыть (Esc)")
         close.clicked.connect(self.accept)
-        GlassLook(close)
         row = QHBoxLayout()
         row.addWidget(title)
         row.addStretch()
@@ -221,9 +312,10 @@ class SettingsDialog(QDialog):
             hint_label.setObjectName("hint")
             hint_label.setWordWrap(True)  # длинная подсказка не раздвигает окно
             labels.addWidget(hint_label)
-        row_layout.addLayout(labels)
-        row_layout.addStretch()
-        row_layout.addWidget(control)
+        # Подписи занимают всё место слева от элемента — подсказка не переносится раньше времени
+        row_layout.setSpacing(16)
+        row_layout.addLayout(labels, 1)
+        row_layout.addWidget(control, 0, Qt.AlignmentFlag.AlignVCenter)
         card_layout.addWidget(row)
         return row
 
@@ -261,7 +353,7 @@ class SettingsDialog(QDialog):
         card = self._section(layout, "Воспроизведение")
         self._row(card, "Продолжать с места остановки", self._segmented(
             "resume", [("Всегда", "always"), ("Спрашивать", "ask"), ("Никогда", "never")]))
-        self._row(card, "Перемотка кнопками ↺ ↻", self._segmented(
+        self._row(card, "Шаг перемотки", self._segmented(
             "skip_seconds", [("5 с", 5), ("10 с", 10), ("15 с", 15), ("30 с", 30)]))
         self._row(card, "Когда видео закончилось", self._segmented(
             "on_end", [("Стоп", "stop"), ("Следующее", "next"), ("Повтор", "repeat")]))
@@ -321,6 +413,7 @@ class SettingsDialog(QDialog):
         btn = QPushButton()
         bind(btn, "setText", text)
         btn.setObjectName("pill")
+        btn.setFixedHeight(30)
         btn.setCursor(Qt.CursorShape.PointingHandCursor)
         btn.setFocusPolicy(Qt.FocusPolicy.NoFocus)
         btn.clicked.connect(slot)
@@ -402,22 +495,20 @@ class SettingsDialog(QDialog):
             QWidget#segmented {{ background-color: {T.segmented}; border-radius: 10px; }}
             QPushButton#segment {{
                 background: transparent; color: {T.text_sub}; border: none;
-                border-radius: 8px; padding: 5px 11px; font-size: 12px;
+                padding: 0; font-size: 12px;
             }}
             QPushButton#segment:hover {{ color: {T.text}; }}
-            QPushButton#segment:checked {{
-                background-color: {T.segment_checked}; color: {T.text}; font-weight: 600;
-            }}
+            QPushButton#segment:checked {{ color: {T.text}; font-weight: 600; }}
+            /* подложку выбранного сегмента рисует SegmentedControl, она переезжает анимацией */
             /* Объём, блик и тень кнопок рисует GlassLook (ui/glass_button.py) */
             QPushButton#pill, QPushButton#danger, QPushButton#pill:hover, QPushButton#danger:hover,
             QPushButton#pill:pressed, QPushButton#danger:pressed {{
                 background: transparent; color: {T.text}; border: none;
-                padding: 6px 14px; font-size: 12px; font-weight: 600;
+                padding: 0 16px; font-size: 12px; font-weight: 600;
             }}
             QPushButton#danger, QPushButton#danger:hover, QPushButton#danger:pressed {{ color: {T.danger}; }}
             QPushButton#danger:disabled {{ color: {T.text_muted}; }}
             QPushButton#close, QPushButton#close:hover, QPushButton#close:pressed {{
-                background: transparent; color: {T.text_sub}; border: none; font-size: 13px;
+                background: transparent; border: none;
             }}
-            QPushButton#close:hover {{ color: {T.text}; }}
         """

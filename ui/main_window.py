@@ -24,7 +24,7 @@ from ui.video_frame import VideoFrame, ASPECT_MODES
 from ui.window_frame import TitleBar, handle_native_event, restore_native_frame, IS_WINDOWS
 from ui.settings_dialog import SettingsDialog
 from ui.properties_dialog import PropertiesDialog
-from ui.styles import T, app_style, set_theme, GLASS_GAP, GLASS_RADIUS
+from ui.styles import T, app_style, load_fonts, set_theme, GLASS_GAP, GLASS_RADIUS
 
 from core.player import VideoPlayer
 from core.history import HistoryManager
@@ -77,6 +77,7 @@ class MainWindow(QMainWindow):
 
         self.settings = Settings(self)
         # Тема — до создания виджетов: они берут цвета из палитры при построении
+        load_fonts()  # до создания виджетов
         set_theme(self.settings.get("theme"))
         # Язык — тоже до создания виджетов; переводы самого Qt (кнопки «Да/Нет» и т.п.)
         self._qt_translator = QTranslator(self)

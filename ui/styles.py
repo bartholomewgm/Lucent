@@ -5,7 +5,11 @@
 поэтому при смене темы (set_theme) достаточно перестроить стили виджетов.
 """
 
-from PyQt6.QtGui import QColor
+import sys
+from pathlib import Path
+
+from PyQt6.QtGui import QColor, QFont, QFontDatabase
+from PyQt6.QtWidgets import QApplication
 
 
 class Palette:
@@ -41,8 +45,8 @@ _DARK_COMMON = dict(
     outline=(255, 255, 255, 44), placeholder=(0, 0, 0, 140), sheen=(255, 255, 255, 255),
     edge_line=(255, 255, 255, 255),
     # Объёмные стеклянные кнопки (ui/glass_button.py)
-    glass_top=(255, 255, 255, 46), glass_bottom=(255, 255, 255, 12),
-    glass_highlight=(255, 255, 255, 130), glass_shade=(0, 0, 0, 70), glass_shadow=(0, 0, 0, 130),
+    glass_top=(255, 255, 255, 62), glass_bottom=(255, 255, 255, 16),
+    glass_highlight=(255, 255, 255, 160), glass_shade=(0, 0, 0, 80), glass_shadow=(0, 0, 0, 140),
 )
 
 THEMES = {
@@ -97,7 +101,22 @@ def set_theme(name: str):
 GLASS_RADIUS = 24
 GLASS_GAP = 12
 
-FONT_FAMILY = "'Segoe UI Variable Text', 'Segoe UI', sans-serif"
+# Шрифт интерфейса — Inter (resources/fonts, лицензия OFL), встроен в приложение,
+# чтобы выглядеть одинаково на любом компьютере. Если не загрузился — Segoe UI
+FONT_NAME = "Inter"
+FONT_FAMILY = f"'{FONT_NAME}', 'Segoe UI', sans-serif"
+_FONTS_DIR = Path(getattr(sys, "_MEIPASS", Path(__file__).resolve().parent.parent)) / "resources" / "fonts"
+
+
+def load_fonts():
+    """Подключить встроенный шрифт и сделать его шрифтом приложения (для QPainter и QFont())"""
+    if FONT_NAME not in QFontDatabase.families():
+        for path in sorted(_FONTS_DIR.glob("*.ttf")):
+            QFontDatabase.addApplicationFont(str(path))
+    font = QFont(FONT_NAME if FONT_NAME in QFontDatabase.families() else "Segoe UI")
+    font.setPointSizeF(9.5)
+    font.setHintingPreference(QFont.HintingPreference.PreferNoHinting)  # ровные формы, как в iOS
+    QApplication.setFont(font)
 
 # Системный шрифт иконок Windows 11 (Windows 10 — MDL2 с теми же кодами)
 ICON_FONT = "'Segoe Fluent Icons', 'Segoe MDL2 Assets'"

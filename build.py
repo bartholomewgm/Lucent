@@ -54,6 +54,7 @@ def main():
         "--clean",
         "--icon", str(ICON),
         "--add-data", f"{ICON};resources/icons",
+        "--add-data", f"{ROOT / 'resources' / 'fonts'};resources/fonts",
         "--add-data", f"{ROOT / 'ui' / 'video.qml'};ui",
         "--distpath", str(DIST),
         "--workpath", str(BUILD),

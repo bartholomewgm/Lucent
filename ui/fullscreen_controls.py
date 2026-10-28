@@ -54,7 +54,7 @@ class FullscreenControls(GlassPanel):
         self._setup_ui(skip_seconds)
         # Над видео иконки и время ярче, чем на нижней панели
         self.setStyleSheet(control_styles(OVERLAY) + f"""
-            QPushButton#icon_btn {{ color: {OVERLAY.text}; font-size: 17px; border-radius: 18px; }}
+            QPushButton#icon_btn, QPushButton#icon_btn:hover, QPushButton#icon_btn:pressed {{ font-size: 16px; }}
             QLabel#time_label {{ color: {OVERLAY.text}; font-size: 14px; }}
         """)
         self._setup_animation()
@@ -80,7 +80,7 @@ class FullscreenControls(GlassPanel):
         self.position_slider.setFixedHeight(16)
 
         # ----- Кнопки: звук и громкость | навигация | выход из полного экрана -----
-        self.mute_button = make_icon_btn(Icons.VOLUME, 36)
+        self.mute_button = make_icon_btn(Icons.VOLUME, 38, OVERLAY)
         bind(self.mute_button, "setToolTip", "Без звука (M)")
         self.volume_slider = QSlider(Qt.Orientation.Horizontal)
         self.volume_slider.setRange(0, 100)
@@ -95,15 +95,15 @@ class FullscreenControls(GlassPanel):
         left_layout.addWidget(self.mute_button)
         left_layout.addWidget(self.volume_slider)
 
-        self.prev_button = make_control_btn(Icons.PREVIOUS, 40)
+        self.prev_button = make_control_btn(Icons.PREVIOUS, 40, OVERLAY)
         bind(self.prev_button, "setToolTip", "Предыдущее (P)")
         self.rewind_button = SkipButton(skip_seconds, forward=False, palette=OVERLAY)
         self.play_button = make_play_btn(OVERLAY)
         self.skip_button = SkipButton(skip_seconds, forward=True, palette=OVERLAY)
-        self.next_button = make_control_btn(Icons.NEXT, 40)
+        self.next_button = make_control_btn(Icons.NEXT, 40, OVERLAY)
         bind(self.next_button, "setToolTip", "Следующее (N)")
 
-        self.exit_button = make_icon_btn(Icons.EXIT_FULLSCREEN, 36)
+        self.exit_button = make_icon_btn(Icons.EXIT_FULLSCREEN, 38, OVERLAY)
         bind(self.exit_button, "setToolTip", "Выйти из полного экрана (Esc)")
 
         right = QWidget()
