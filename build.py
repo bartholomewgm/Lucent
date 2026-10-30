@@ -4,14 +4,18 @@
     venv\\Scripts\\python.exe -m pip install pyinstaller
     venv\\Scripts\\python.exe build.py
 
-Результат: dist\\Lucent\\Lucent.exe и архив dist\\Lucent-windows.zip,
-который можно просто отправить — Python у получателя не нужен.
+Результат: dist\\Lucent\\Lucent.exe, архив dist\\Lucent-windows.zip и установщик
+dist\\Lucent-Setup.exe (если есть Inno Setup 6). Python у получателя не нужен.
 """
 
+import os
 import shutil
+import subprocess
 from pathlib import Path
 
 import PyInstaller.__main__
+
+APP_VERSION = "1.0.1"
 
 ROOT = Path(__file__).resolve().parent
 ICON = ROOT / "resources" / "icons" / "lucent.ico"
@@ -45,6 +49,30 @@ def prune():
             dll.unlink()
 
 
+def find_iscc():
+    """Компилятор Inno Setup: в PATH или в стандартных папках установки"""
+    found = shutil.which("ISCC")
+    if found:
+        return found
+    roots = [os.environ.get("LOCALAPPDATA", "") + r"\Programs", os.environ.get("ProgramFiles(x86)", ""),
+             os.environ.get("ProgramFiles", "")]
+    for root in roots:
+        path = Path(root) / "Inno Setup 6" / "ISCC.exe"
+        if root and path.is_file():
+            return str(path)
+    return None
+
+
+def build_installer():
+    iscc = find_iscc()
+    if not iscc:
+        print("\nInno Setup 6 не найден — установщик не собран (winget install JRSoftware.InnoSetup)")
+        return None
+    subprocess.run([iscc, "/Q", f"/DAppVersion={APP_VERSION}", str(ROOT / "installer" / "lucent.iss")],
+                   check=True)
+    return DIST / "Lucent-Setup.exe"
+
+
 def main():
     PyInstaller.__main__.run([
         str(ROOT / "main.py"),
@@ -65,7 +93,8 @@ def main():
     # Промежуточная папка PyInstaller: там лежит нерабочая заготовка Lucent.exe
     # без библиотек — убираем, чтобы её не запустили по ошибке
     shutil.rmtree(BUILD, ignore_errors=True)
-    print(f"\nГотово: {DIST / 'Lucent' / 'Lucent.exe'}\nАрхив:  {archive}")
+    setup = build_installer()
+    print(f"\nГотово: {DIST / 'Lucent' / 'Lucent.exe'}\nАрхив:  {archive}\nУстановщик: {setup}")
 
 
 if __name__ == "__main__":

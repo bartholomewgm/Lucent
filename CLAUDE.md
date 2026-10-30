@@ -11,9 +11,10 @@ UI language (Russian / English) lives in `core/i18n.py`: the Russian string in t
 ```bash
 venv/Scripts/python.exe main.py                 # run (optionally: main.py "C:/path/video.mp4")
 venv/Scripts/python.exe -m pip install -r requirements.txt
-venv/Scripts/python.exe build.py                # PyInstaller build -> dist/Lucent/Lucent.exe + dist/Lucent-windows.zip
+venv/Scripts/python.exe build.py                # PyInstaller build -> dist/Lucent/Lucent.exe + dist/Lucent-windows.zip + dist/Lucent-Setup.exe
 ```
 
+- The installer is `installer/lucent.iss` (Inno Setup 6, per-user, no admin); `build.py` compiles it with `APP_VERSION` — bump that constant for each release, and never change `AppId` in the `.iss` (it is how updates find the installed copy).
 - `build.py` needs `pip install pyinstaller` in the venv. It deletes `build/` afterwards (the exe left there is a non-working stub without `_internal`), prunes unused Qt QML modules/DLLs, and must `--add-data` every non-Python file the app loads at runtime (currently `ui/video.qml`, `resources/icons/lucent.ico`, `resources/fonts/`).
 - There is no test suite and no linter configured. Check code with `pyflakes` (not in requirements; install it to a temp `--target` dir rather than into the venv). Behaviour has been verified with throwaway scripts that drive a real `MainWindow` on screen; for video rendering, screen grabs of full-screen D3D output can be black — compare a `PrintWindow(..., PW_RENDERFULLCONTENT)` capture against `QVideoFrame.toImage()` instead.
 - When testing, redirect state so the user's real data isn't touched: `QSettings.setPath(IniFormat, UserScope, tmp)` and set `core.history._DB_PATH` to a temp file before creating `MainWindow`.
