@@ -26,6 +26,9 @@ class Settings(QObject):
         "playlist_folder": "",       # пусто — очередь собирается вручную
         "watch_folder": True,        # подхватывать новые видео из папки-плейлиста
         "folder_sort": "name",       # name | date
+        "mini_x": -100000,           # место мини-плеера; за экраном — поставить в угол
+        "mini_y": -100000,
+        "mini_width": 420,
     }
 
     def __init__(self, parent=None):

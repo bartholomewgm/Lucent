@@ -28,13 +28,17 @@ class VideoFrame(QQuickWidget):
     double_clicked = pyqtSignal()
     picture_changed = pyqtSignal()  # картинка сдвинулась или сменила размер
 
-    def __init__(self, radius: int):
+    def __init__(self, radius: int, stack_on_top: bool = True):
         super().__init__()
         self.setResizeMode(QQuickWidget.ResizeMode.SizeRootObjectToView)
-        # Прозрачный фон: вокруг видео виден стеклянный фон окна
-        self.setClearColor(Qt.GlobalColor.transparent)
-        self.setAttribute(Qt.WidgetAttribute.WA_AlwaysStackOnTop)
-        self.setAttribute(Qt.WidgetAttribute.WA_TranslucentBackground)
+        if stack_on_top:
+            # Прозрачный фон: вокруг видео виден стеклянный фон окна
+            self.setClearColor(Qt.GlobalColor.transparent)
+            self.setAttribute(Qt.WidgetAttribute.WA_AlwaysStackOnTop)
+            self.setAttribute(Qt.WidgetAttribute.WA_TranslucentBackground)
+        else:
+            # Мини-плеер: непрозрачное видео, поверх него — обычные виджеты панели
+            self.setClearColor(Qt.GlobalColor.black)
         self.setSource(QUrl.fromLocalFile(str(QML_FILE)))
         if self.status() == QQuickWidget.Status.Error:
             raise RuntimeError("video.qml: " + "; ".join(e.toString() for e in self.errors()))

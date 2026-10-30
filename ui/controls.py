@@ -419,6 +419,9 @@ class ControlsWidget(GlassPanel):
         self.volume_slider.setFixedWidth(100)
         bind(self.volume_slider, "setToolTip", "Громкость (↑/↓)")
 
+        self.mini_button = make_icon_btn(Icons.MINI_PLAYER, 36)
+        bind(self.mini_button, "setToolTip", "Мини-плеер (Ctrl+M)")
+
         self.fullscreen_button = make_icon_btn(Icons.FULLSCREEN, 36)
         bind(self.fullscreen_button, "setToolTip", "Полный экран (F)")
 
@@ -429,6 +432,7 @@ class ControlsWidget(GlassPanel):
         right_layout.addWidget(self.speed_button)
         right_layout.addWidget(self.mute_button)
         right_layout.addWidget(self.volume_slider)
+        right_layout.addWidget(self.mini_button)
         right_layout.addWidget(self.fullscreen_button)
 
         # ----- 5. НИЖНИЙ РЯД -----

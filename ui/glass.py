@@ -3,7 +3,7 @@
 фон-«обои» и полупрозрачные панели с бликом по краю. Цвета — из текущей темы (ui/styles.py).
 """
 
-from PyQt6.QtCore import QEasingCurve, QEvent, QPointF, QRectF, Qt, QVariantAnimation
+from PyQt6.QtCore import QEasingCurve, QEvent, QPointF, QRectF, Qt, QVariantAnimation, pyqtSignal
 from PyQt6.QtGui import (
     QColor,
     QLinearGradient,
@@ -24,6 +24,25 @@ def _lerp(a: QColor, b: QColor, t: float) -> QColor:
                   round(a.alpha() + (b.alpha() - a.alpha()) * t))
 
 
+def paint_halo(p: QPainter, picture: QRectF, colors, strength: float, width: float, corner: float):
+    """Мягкий ореол цветов вокруг прямоугольника: слева colors[0], по центру [2], справа [1]"""
+    rings = 21
+    brush = QLinearGradient(picture.topLeft(), picture.topRight())
+    brush.setColorAt(0.0, colors[0])
+    brush.setColorAt(0.5, colors[2])
+    brush.setColorAt(1.0, colors[1])
+    p.save()
+    p.setPen(Qt.PenStyle.NoPen)
+    p.setBrush(brush)
+    step = 2 * strength / (rings * (rings + 1))  # у картинки плотнее, наружу сходит на нет
+    for i in range(rings):
+        spread = width * (1 - i / rings)
+        radius = corner + spread
+        p.setOpacity(step * (i + 1))
+        p.drawRoundedRect(picture.adjusted(-spread, -spread, spread, spread), radius, radius)
+    p.restore()
+
+
 class GlassBackground(QWidget):
     """
     Фон окна, на котором лежит стекло.
@@ -34,11 +53,11 @@ class GlassBackground(QWidget):
 
     # Пятна «Градиента»: центр (доля ширины, доля высоты), радиус (доля диагонали)
     BLOBS = (((0.08, 0.05), 0.55), ((0.95, 0.35), 0.50), ((0.35, 1.05), 0.45))
-    # Ореол вокруг картинки: ширина и число колец, из которых он складывается
-    HALO_WIDTH = 42
-    HALO_RINGS = 21
+    HALO_WIDTH = 24  # ореол вокруг картинки в однотонных темах
+    HALO_SOFTNESS = 0.7
     TRANSITION_MS = 900
     AMBIENT_BOOST = 1.45  # пятна «Градиента» под цвета видео ярче обычных
+    colors_changed = pyqtSignal()
     # Контур окна как у Windows 11: линия 1 px по краю, углы 8 px.
     # Системную рамку Windows не рисует — у окна свой заголовок (ui/window_frame.py)
     WINDOW_RADIUS = 8
@@ -85,6 +104,10 @@ class GlassBackground(QWidget):
                 self.update()
         return super().eventFilter(obj, event)
 
+    def video_colors(self):
+        """Текущие цвета видео; None — сейчас показаны цвета темы"""
+        return self._colors if self._ambient else None
+
     def set_colors(self, colors):
         """Плавно перекрасить пятна под цвета видео"""
         self._ambient = True
@@ -114,6 +137,7 @@ class GlassBackground(QWidget):
         self._colors = [_lerp(a, b, t) for a, b in zip(self._from, self._to)]
         target = self.AMBIENT_BOOST if self._ambient else 1.0
         self._boost = self._boost_from + (target - self._boost_from) * t
+        self.colors_changed.emit()
         if not self.plain:
             self.update()
 
@@ -138,21 +162,7 @@ class GlassBackground(QWidget):
         picture = widget.picture_rect().translated(QPointF(widget.mapTo(self, widget.rect().topLeft())))
         if picture.width() <= 0:
             return
-        brush = QLinearGradient(picture.topLeft(), picture.topRight())
-        brush.setColorAt(0.0, self._colors[0])
-        brush.setColorAt(0.5, self._colors[2])
-        brush.setColorAt(1.0, self._colors[1])
-        p.save()
-        p.setPen(Qt.PenStyle.NoPen)
-        p.setBrush(brush)
-        strength, rings = T.glow[0] / 255, self.HALO_RINGS
-        step = 2 * strength / (rings * (rings + 1))  # у картинки плотнее, наружу сходит на нет
-        for i in range(rings):
-            spread = self.HALO_WIDTH * (1 - i / rings)
-            radius = GLASS_RADIUS + spread
-            p.setOpacity(step * (i + 1))
-            p.drawRoundedRect(picture.adjusted(-spread, -spread, spread, spread), radius, radius)
-        p.restore()
+        paint_halo(p, picture, self._colors, T.glow[0] / 255 * self.HALO_SOFTNESS, self.HALO_WIDTH, GLASS_RADIUS)
 
     def paintEvent(self, event):
         p = QPainter(self)

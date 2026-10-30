@@ -47,6 +47,13 @@ class AmbientColors(QObject):
         self.enabled = True
         self._last = None
         self._clock = QElapsedTimer()
+        self._sink = sink
+        sink.videoFrameChanged.connect(self._on_frame)
+
+    def set_sink(self, sink):
+        """Видео стало выводиться в другое окно (мини-плеер)"""
+        self._sink.videoFrameChanged.disconnect(self._on_frame)
+        self._sink = sink
         sink.videoFrameChanged.connect(self._on_frame)
 
     def reset(self):

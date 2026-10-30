@@ -39,6 +39,8 @@ EN = {
     "Без звука (M)": "Mute (M)",
     "Громкость (↑/↓)": "Volume (↑/↓)",
     "Полный экран (F)": "Full screen (F)",
+    "Мини-плеер (Ctrl+M)": "Mini player (Ctrl+M)",
+    "Вернуться в большое окно (Esc)": "Back to the main window (Esc)",
     "Выйти из полного экрана (Esc)": "Exit full screen (Esc)",
     "Ничего не воспроизводится": "Nothing playing",
     "Откройте видео, чтобы начать": "Open a video to start",

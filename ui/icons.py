@@ -29,6 +29,8 @@ class Icons:
     VIDEO = "video"
     SETTINGS = "settings"
     CIRCLE_ARROW = "circle_arrow"  # круговая стрелка по часовой
+    MINI_PLAYER = "mini_player"
+    EXPAND = "expand"  # стрелка выходит из окна: вернуть в большое окно
     MINIMIZE = "minimize"
     MAXIMIZE = "maximize"
     RESTORE = "restore"
@@ -96,6 +98,13 @@ def _restore() -> QPainterPath:
     return path
 
 
+def _mini_player() -> QPainterPath:
+    path = QPainterPath()
+    path.addRoundedRect(QRectF(2.5, 4.5, 19, 15), 2.5, 2.5)
+    path.addRoundedRect(QRectF(12, 12, 6.5, 4.5), 1, 1)
+    return path
+
+
 def _rect_path(rect: QRectF) -> QPainterPath:
     path = QPainterPath()
     path.addRect(rect)
@@ -132,6 +141,9 @@ _OUTLINED = {
     Icons.VIDEO: _video,
     Icons.SETTINGS: _gear,
     Icons.CIRCLE_ARROW: _circle_arrow,
+    Icons.MINI_PLAYER: _mini_player,
+    Icons.EXPAND: lambda: _lines([(11, 4), (6.5, 4), (4, 6.5), (4, 17.5), (6.5, 20), (17.5, 20), (20, 17.5), (20, 13)],
+                                 [(12, 12), (20, 4)], [(14.5, 4), (20, 4), (20, 9.5)]),
     Icons.MINIMIZE: lambda: _lines([(3, 12), (21, 12)]),
     Icons.MAXIMIZE: lambda: _rect_path(QRectF(3, 3, 18, 18)),
     Icons.RESTORE: _restore,

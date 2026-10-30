@@ -21,6 +21,7 @@ from ui.fullscreen_controls import FullscreenControls
 from ui.glass import GlassBackground
 from ui.glass_button import GlassLook
 from ui.video_frame import VideoFrame, ASPECT_MODES
+from ui.mini_player import MiniPlayer
 from ui.window_frame import TitleBar, handle_native_event, restore_native_frame, IS_WINDOWS
 from ui.settings_dialog import SettingsDialog
 from ui.properties_dialog import PropertiesDialog
@@ -122,6 +123,8 @@ class MainWindow(QMainWindow):
         self.video_container = VideoFrame(GLASS_RADIUS)
         self.player.set_video_output(self.video_container.video_output)
         self.ambient = AmbientColors(self.player.video_sink(), self)
+        self.mini = None           # мини-плеер создаётся при первом открытии
+        self._mini_active = False
         self.video_container.double_clicked.connect(self.toggle_fullscreen)
 
         # Выдвижной плейлист | видео (отступ между ними входит в ширину drawer)
@@ -176,6 +179,7 @@ class MainWindow(QMainWindow):
         self.controls.skip_button.clicked.connect(lambda: self.player.forward(self._skip_ms()))
         self.title_bar.settings_button.clicked.connect(self.open_settings)
         self.controls.fullscreen_button.clicked.connect(self.toggle_fullscreen)
+        self.controls.mini_button.clicked.connect(self.enter_mini)
 
         # Плейлист: кнопка в нижней панели крутится в такт выезду панели
         self.controls.playlist_button.clicked.connect(self.drawer.toggle)
@@ -259,6 +263,7 @@ class MainWindow(QMainWindow):
         QShortcut(QKeySequence("Ctrl+,"), self).activated.connect(self.open_settings)
         QShortcut(QKeySequence("A"), self).activated.connect(self.cycle_aspect_mode)
         QShortcut(QKeySequence("Ctrl+I"), self).activated.connect(self.open_properties)
+        QShortcut(QKeySequence("Ctrl+M"), self).activated.connect(self.enter_mini)
         QShortcut(QKeySequence("Delete"), self).activated.connect(self.playlist.request_remove_current)
 
     # --- Настройки ---
@@ -444,6 +449,55 @@ class MainWindow(QMainWindow):
         if self.isFullScreen():
             self.toggle_fullscreen()
 
+    # --- Мини-плеер ---
+
+    def _create_mini(self):
+        self.mini = MiniPlayer(self.root, self.settings.get("skip_seconds"))
+        self.mini.back_requested.connect(self.exit_mini)
+        self.mini.play_pause_requested.connect(self.play_pause)
+        c = self.mini.controls
+        c.rewind_button.clicked.connect(lambda: self.player.backward(self._skip_ms()))
+        c.skip_button.clicked.connect(lambda: self.player.forward(self._skip_ms()))
+        c.position_slider.seek_requested.connect(self.player.set_position)
+
+    def _switch_video_output(self, frame):
+        """Перевести картинку в другое окно; на паузе показать в нём текущий кадр"""
+        self.player.set_video_output(frame.video_output)
+        self.ambient.set_sink(self.player.video_sink())
+        if not self.player.is_playing():
+            self.player.set_position(self.player.player.position())
+
+    def enter_mini(self):
+        if self._mini_active or not self.current_file_path:
+            return
+        self.exit_fullscreen()
+        if self.mini is None:
+            self._create_mini()
+        self._main_was_maximized = self.isMaximized()
+        self.mini.set_skip_seconds(self.settings.get("skip_seconds"))
+        self.mini.set_duration(self.player.duration())
+        self.mini.set_position(self.player.player.position())
+        self.mini.set_play_button_state(self.player.is_playing())
+        self._switch_video_output(self.mini.video)
+        self.mini.open_at(self.settings.get("mini_x"), self.settings.get("mini_y"), self.settings.get("mini_width"))
+        self.showMinimized()
+        self._mini_active = True
+
+    def exit_mini(self):
+        if not self._mini_active:
+            return
+        self._mini_active = False
+        self._save_mini_place()
+        self.mini.close_window()
+        self._switch_video_output(self.video_container)
+        self.showMaximized() if self._main_was_maximized else self.showNormal()
+        self.activateWindow()
+
+    def _save_mini_place(self):
+        self.settings.set("mini_x", self.mini.x())
+        self.settings.set("mini_y", self.mini.y())
+        self.settings.set("mini_width", self.mini.width())
+
     def _check_fullscreen_idle(self):
         pos = QCursor.pos()
         if pos != self._last_cursor_pos:
@@ -497,6 +551,9 @@ class MainWindow(QMainWindow):
             # Контур окна — только у обычного окна, как у системных
             self.root.outline = not (self.isMaximized() or self.isFullScreen())
             self.root.update()
+            # Главное окно открыли с панели задач — мини-плеер больше не нужен
+            if self._mini_active and not self.isMinimized():
+                QTimer.singleShot(0, self.exit_mini)
 
     def keyPressEvent(self, event):
         if event.key() in (Qt.Key.Key_F11, Qt.Key.Key_F):
@@ -602,6 +659,7 @@ class MainWindow(QMainWindow):
         path = str(Path(path).resolve())
         if path == self.current_file_path:
             self._save_progress()  # место просмотра не теряется
+            self.exit_mini()
             self.player.stop()
             self.current_file_path = None
             self.ambient.reset()
@@ -651,10 +709,14 @@ class MainWindow(QMainWindow):
         # Время — по ручке: пока её тянут, видно, куда будет перемотка
         self.controls.update_time_display(slider.value(), self.player.duration())
         self.fs_controls.set_position(position)
+        if self.mini:
+            self.mini.set_position(position)
 
     def update_duration(self, duration: int):
         self.controls.position_slider.setRange(0, max(duration, 0))
         self.fs_controls.set_duration(duration)
+        if self.mini:
+            self.mini.set_duration(duration)
         if self.current_file_path and duration > 0:
             self.controls.update_track_info(self.current_file_path, duration)
             self._apply_pending_position()
@@ -676,6 +738,8 @@ class MainWindow(QMainWindow):
     def _set_play_state(self, is_playing: bool):
         self.controls.set_play_button_state(is_playing)
         self.fs_controls.set_play_button_state(is_playing)
+        if self.mini:
+            self.mini.set_play_button_state(is_playing)
 
     def handle_player_error(self, error_message: str):
         QMessageBox.critical(self, tr("Ошибка плеера"), error_message)
@@ -692,6 +756,10 @@ class MainWindow(QMainWindow):
         self._save_progress()
 
     def closeEvent(self, event):
+        if self._mini_active:
+            self._save_mini_place()
+        if self.mini:
+            self.mini.close_window()
         self.autosave_timer.stop()
         self._idle_timer.stop()
         self.fs_controls.hide_now()

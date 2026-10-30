@@ -9,8 +9,8 @@ import ctypes
 import sys
 from ctypes import wintypes
 
-from PyQt6.QtCore import QPoint, Qt
-from PyQt6.QtGui import QColor
+from PyQt6.QtCore import QPoint, QPointF, QRectF, Qt
+from PyQt6.QtGui import QColor, QPainter, QPen
 from PyQt6.QtWidgets import QHBoxLayout, QPushButton, QWidget
 from core.i18n import bind, tr
 
@@ -120,6 +120,36 @@ def handle_native_event(window, title_bar, message):
     return None
 
 
+class CaptionButton(IconButton):
+    """Кнопка окна. Значок 10×10 рисуется по сетке пикселей, как у Windows:
+    в таком размере общие значки из сетки 24×24 расплываются между пикселями"""
+
+    SIZE = 10
+
+    def paintEvent(self, event):
+        QPushButton.paintEvent(self, event)
+        x, y = (self.width() - self.SIZE) // 2, (self.height() - self.SIZE) // 2
+        p = QPainter(self)
+        name = self.icon_name
+        if name == Icons.CLOSE:
+            p.setRenderHint(QPainter.RenderHint.Antialiasing)
+            p.setPen(QPen(self._current_color(), 1.25, cap=Qt.PenCapStyle.SquareCap))
+            p.drawLine(QPointF(x + 0.5, y + 0.5), QPointF(x + 9.5, y + 9.5))
+            p.drawLine(QPointF(x + 9.5, y + 0.5), QPointF(x + 0.5, y + 9.5))
+            return
+        p.setPen(QPen(self._current_color(), 1.0))
+        if name == Icons.MINIMIZE:
+            p.drawLine(x, y + 5, x + 9, y + 5)
+        elif name == Icons.MAXIMIZE:
+            p.drawRect(QRectF(x, y, 9, 9))
+        else:  # Icons.RESTORE: окно и уголок второго за ним
+            p.drawRect(QRectF(x, y + 2, 7, 7))
+            p.drawLine(x + 2, y + 2, x + 2, y)
+            p.drawLine(x + 2, y, x + 9, y)
+            p.drawLine(x + 9, y, x + 9, y + 7)
+            p.drawLine(x + 9, y + 7, x + 7, y + 7)
+
+
 class TitleBar(QWidget):
     """Заголовок: пустая полоса для перетаскивания, справа настройки и кнопки окна"""
 
@@ -135,7 +165,7 @@ class TitleBar(QWidget):
         self.close_button = self._button(Icons.CLOSE, "Закрыть", window.close, QColor("white"))
         self.close_button.setObjectName("close_btn")
         # Шестерёнка — отдельно от кнопок окна, как в приложениях Windows 11
-        self.settings_button = IconButton(Icons.SETTINGS, 17, color="text_sub", hover_color="text", stroke=1.5)
+        self.settings_button = IconButton(Icons.SETTINGS, 18, stroke=2.2)
         self.settings_button.setObjectName("settings_btn")
         self.settings_button.setFixedSize(36, 32)
         self.settings_button.setFocusPolicy(Qt.FocusPolicy.NoFocus)
@@ -169,7 +199,7 @@ class TitleBar(QWidget):
 
 
     def _button(self, icon: str, tip: str, slot, hover_color=None) -> QPushButton:
-        btn = IconButton(icon, 11, hover_color=hover_color, stroke=2.0)
+        btn = CaptionButton(icon, hover_color=hover_color)
         btn.setFixedSize(46, 32)
         btn.setFocusPolicy(Qt.FocusPolicy.NoFocus)
         bind(btn, "setToolTip", tip)
