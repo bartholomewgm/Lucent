@@ -1,10 +1,10 @@
-from PyQt6.QtWidgets import QVBoxLayout, QPushButton, QWidget
+from PyQt6.QtWidgets import QVBoxLayout, QWidget
 from core.i18n import bind
 from PyQt6.QtCore import Qt, pyqtSignal, pyqtProperty, QPropertyAnimation, QEasingCurve
 
 from ui.glass import GlassPanel
 from ui.glass_button import GlassLook
-from ui.styles import T, ICON_FONT, Icons
+from ui.icons import IconButton, Icons
 from ui.playlist import PlaylistWidget
 
 
@@ -24,7 +24,7 @@ class SidebarWidget(GlassPanel):
         layout.setSpacing(14)
 
         # ===== КНОПКА ДОБАВЛЕНИЯ: только «+» =====
-        self.open_button = QPushButton(Icons.ADD)
+        self.open_button = IconButton(Icons.ADD, 18)
         self.open_button.setCursor(Qt.CursorShape.PointingHandCursor)
         self.open_button.setFocusPolicy(Qt.FocusPolicy.NoFocus)
         self.open_button.setFixedHeight(46)
@@ -42,14 +42,11 @@ class SidebarWidget(GlassPanel):
 
     def apply_theme(self):
         """Перестроить стили под текущую тему"""
-        self.open_button.setStyleSheet(f"""
-            QPushButton, QPushButton:hover, QPushButton:pressed {{
+        self.open_button.setStyleSheet("""
+            QPushButton, QPushButton:hover, QPushButton:pressed {
                 background: transparent;  /* объём и тень — GlassLook */
-                color: {T.text};
                 border: none;
-                font-family: {ICON_FONT};
-                font-size: 16px;
-            }}
+            }
         """)
         self.playlist.apply_theme()
         self.update()

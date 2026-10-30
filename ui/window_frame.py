@@ -10,10 +10,12 @@ import sys
 from ctypes import wintypes
 
 from PyQt6.QtCore import QPoint, Qt
+from PyQt6.QtGui import QColor
 from PyQt6.QtWidgets import QHBoxLayout, QPushButton, QWidget
 from core.i18n import bind, tr
 
-from ui.styles import T, ICON_FONT, Icons
+from ui.icons import IconButton, Icons
+from ui.styles import T
 
 IS_WINDOWS = sys.platform == "win32"
 
@@ -128,12 +130,12 @@ class TitleBar(QWidget):
         self._window = window
         self.setFixedHeight(self.HEIGHT)
 
-        self.min_button = self._button("\uE921", "Свернуть", window.showMinimized)
-        self.max_button = self._button("\uE922", "Развернуть", self._toggle_maximized)
-        self.close_button = self._button("\uE8BB", "Закрыть", window.close)
+        self.min_button = self._button(Icons.MINIMIZE, "Свернуть", window.showMinimized)
+        self.max_button = self._button(Icons.MAXIMIZE, "Развернуть", self._toggle_maximized)
+        self.close_button = self._button(Icons.CLOSE, "Закрыть", window.close, QColor("white"))
         self.close_button.setObjectName("close_btn")
         # Шестерёнка — отдельно от кнопок окна, как в приложениях Windows 11
-        self.settings_button = QPushButton(Icons.SETTINGS)
+        self.settings_button = IconButton(Icons.SETTINGS, 17, color="text_sub", hover_color="text", stroke=1.5)
         self.settings_button.setObjectName("settings_btn")
         self.settings_button.setFixedSize(36, 32)
         self.settings_button.setFocusPolicy(Qt.FocusPolicy.NoFocus)
@@ -156,22 +158,18 @@ class TitleBar(QWidget):
     def apply_theme(self):
         self.setStyleSheet(f"""
             QPushButton {{
-                background: transparent; color: {T.text}; border: none;
-                border-radius: 0; font-family: {ICON_FONT}; font-size: 10px;
+                background: transparent; border: none; border-radius: 0;
             }}
             QPushButton:hover {{ background-color: {T.fill_hover}; }}
             QPushButton:pressed {{ background-color: {T.fill_pressed}; }}
-            QPushButton#settings_btn {{
-                font-size: 15px; color: {T.text_sub}; border-radius: 8px;
-            }}
-            QPushButton#settings_btn:hover {{ color: {T.text}; }}
-            QPushButton#close_btn:hover {{ background-color: #c42b1c; color: white; }}
-            QPushButton#close_btn:pressed {{ background-color: #a52618; color: white; }}
+            QPushButton#settings_btn {{ border-radius: 8px; }}
+            QPushButton#close_btn:hover {{ background-color: #c42b1c; }}
+            QPushButton#close_btn:pressed {{ background-color: #a52618; }}
         """)
 
 
-    def _button(self, glyph: str, tip: str, slot) -> QPushButton:
-        btn = QPushButton(glyph)
+    def _button(self, icon: str, tip: str, slot, hover_color=None) -> QPushButton:
+        btn = IconButton(icon, 11, hover_color=hover_color, stroke=2.0)
         btn.setFixedSize(46, 32)
         btn.setFocusPolicy(Qt.FocusPolicy.NoFocus)
         bind(btn, "setToolTip", tip)
@@ -186,7 +184,7 @@ class TitleBar(QWidget):
 
     def update_state(self):
         maximized = self._window.isMaximized()
-        self.max_button.setText("\uE923" if maximized else "\uE922")
+        self.max_button.set_icon(Icons.RESTORE if maximized else Icons.MAXIMIZE)
         self.max_button.setToolTip(tr("Свернуть в окно" if maximized else "Развернуть"))
 
     def mousePressEvent(self, event):

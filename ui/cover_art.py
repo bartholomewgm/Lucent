@@ -6,7 +6,8 @@ from PyQt6.QtWidgets import QLabel
 from PyQt6.QtGui import QImage, QPainter, QPainterPath, QPixmap
 from PyQt6.QtCore import QRectF, Qt
 
-from ui.styles import T, ICON_FONT, Icons
+from ui.icons import Icons, draw_icon
+from ui.styles import T
 
 
 class CoverArtWidget(QLabel):
@@ -17,6 +18,7 @@ class CoverArtWidget(QLabel):
     def __init__(self, size: int = 56):
         super().__init__()
         self._size = size
+        self._placeholder = True
         self.setFixedSize(size, size)
         self.setAlignment(Qt.AlignmentFlag.AlignCenter)
         self.apply_theme()
@@ -27,14 +29,18 @@ class CoverArtWidget(QLabel):
             background-color: {T.fill};
             border: none;
             border-radius: {self.RADIUS}px;
-            color: {T.text_sub};
-            font-family: {ICON_FONT};
-            font-size: 20px;
         """)
 
     def set_placeholder(self):
+        self._placeholder = True
         self.setPixmap(QPixmap())
-        self.setText(Icons.VIDEO)
+
+    def paintEvent(self, event):
+        super().paintEvent(event)
+        if self._placeholder:
+            side = 22
+            rect = QRectF((self.width() - side) / 2, (self.height() - side) / 2, side, side)
+            draw_icon(QPainter(self), Icons.VIDEO, rect, T.color("text_sub"), 1.6)
 
     def set_image(self, image: QImage):
         """Кадр: квадрат из середины, скруглённые углы, чёткий на HiDPI"""
@@ -59,5 +65,5 @@ class CoverArtWidget(QLabel):
         painter.drawImage(0, 0, square)
         painter.end()
         pixmap.setDevicePixelRatio(dpr)
-        self.setText("")
+        self._placeholder = False
         self.setPixmap(pixmap)

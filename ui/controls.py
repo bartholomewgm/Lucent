@@ -13,62 +13,40 @@ from PyQt6.QtWidgets import (
 )
 from core.i18n import bind, tr
 from PyQt6.QtCore import Qt, QPointF, QRectF, QElapsedTimer, pyqtSignal
-from PyQt6.QtGui import QFont, QPainter, QPainterPath, QPen
+from PyQt6.QtGui import QFont, QPainter, QPen
 
 from ui.cover_art import CoverArtWidget
 from ui.video_frame import ASPECT_MODES
 from ui.glass import GlassPanel, make_glass_menu
 from ui.glass_button import GlassLook
-from ui.styles import T, ICON_FONT, Icons
+from ui.icons import IconButton, Icons, draw_icon
+from ui.styles import T
 
 
-def _round_btn(glyph: str, size: int) -> QPushButton:
-    btn = QPushButton(glyph)
+def _round_btn(btn: QPushButton, size: int) -> QPushButton:
     btn.setFixedSize(size, size)
     btn.setCursor(Qt.CursorShape.PointingHandCursor)
     btn.setFocusPolicy(Qt.FocusPolicy.NoFocus)
     return btn
 
 
-def make_icon_btn(glyph: str, size: int, palette=None) -> QPushButton:
+def make_icon_btn(icon: str, size: int, palette=None) -> QPushButton:
     """Круглая стеклянная кнопка со значком (объём и тень — GlassLook)"""
-    btn = _round_btn(glyph, size)
+    btn = _round_btn(IconButton(icon, 16, palette), size)
     btn.setObjectName("icon_btn")
     GlassLook(btn, palette=palette)
     return btn
 
 
-def make_control_btn(glyph: str, size: int, palette=None) -> QPushButton:
-    btn = make_icon_btn(glyph, size, palette)
+def make_control_btn(icon: str, size: int, palette=None) -> QPushButton:
+    btn = make_icon_btn(icon, size, palette)
+    btn.icon_size_px = 18
     btn.setObjectName("control_btn")
     return btn
 
 
-class PlayButton(QPushButton):
-    """Play/пауза. Значок рисуется контуром (QPainterPath), а не текстом: у текста
-    Windows добавляет цветную кайму ClearType, и на тёмной кнопке (светлая тема) она видна"""
-
-    def __init__(self, palette=None):
-        super().__init__(Icons.PLAY)
-        self._palette = palette
-
-    def paintEvent(self, event):
-        font = QFont(ICON_FONT.split(",")[0].strip("' "))
-        font.setPixelSize(18)
-        glyph = QPainterPath()
-        glyph.addText(0, 0, font, self.text())
-        box = glyph.boundingRect()
-        glyph.translate(QRectF(self.rect()).center() - box.center())
-        p = QPainter(self)
-        p.setRenderHint(QPainter.RenderHint.Antialiasing)
-        p.fillPath(glyph, (self._palette or T).color("play_fg"))
-
-
 def make_play_btn(palette=None) -> QPushButton:
-    btn = PlayButton(palette)
-    btn.setFixedSize(48, 48)
-    btn.setCursor(Qt.CursorShape.PointingHandCursor)
-    btn.setFocusPolicy(Qt.FocusPolicy.NoFocus)
+    btn = _round_btn(IconButton(Icons.PLAY, 22, palette, color="play_fg"), 48)
     btn.setObjectName("play_btn")
     bind(btn, "setToolTip", "Воспроизвести (Пробел)")
     GlassLook(btn, kind="play", palette=palette)  # объёмная, с мягкой тенью
@@ -101,20 +79,11 @@ def control_styles(p=None) -> str:
         QPushButton#icon_btn:hover, QPushButton#control_btn:hover,
         QPushButton#icon_btn:pressed, QPushButton#control_btn:pressed {{
             background: transparent;
-            color: {p.text};
             border: none;
-            font-family: {ICON_FONT};
-            font-size: 15px;
-        }}
-        QPushButton#control_btn, QPushButton#control_btn:hover, QPushButton#control_btn:pressed {{
-            font-size: 16px;
         }}
         QPushButton#play_btn, QPushButton#play_btn:hover, QPushButton#play_btn:pressed {{
             background: transparent;
-            color: {p.play_fg};
             border: none;
-            font-family: {ICON_FONT};
-            font-size: 18px;
         }}
         QPushButton#pill_btn, QPushButton#pill_btn:hover, QPushButton#pill_btn:pressed {{
             background: transparent;
@@ -257,7 +226,8 @@ class SkipButton(QPushButton):
         p = QPainter(self)
         p.setRenderHint(QPainter.RenderHint.Antialiasing)
         p.setRenderHint(QPainter.RenderHint.TextAntialiasing)
-        p.setPen((self._palette or T).color("text"))
+        color = (self._palette or T).color("text")
+        p.setPen(color)
         rect = QRectF(self.rect())
 
         # Стрелка: для «назад» отражаем по горизонтали
@@ -265,10 +235,7 @@ class SkipButton(QPushButton):
         if not self.forward:
             p.translate(rect.width(), 0)
             p.scale(-1, 1)
-        icon_font = QFont(ICON_FONT.split(",")[0].strip("' "))
-        icon_font.setPixelSize(24)
-        p.setFont(icon_font)
-        p.drawText(rect, Qt.AlignmentFlag.AlignCenter, Icons.CIRCLE_ARROW)
+        draw_icon(p, Icons.CIRCLE_ARROW, QRectF(6, 6, 28, 28), color, 1.5)
         p.restore()
 
         number_font = QFont(self.font())
@@ -564,11 +531,11 @@ class ControlsWidget(GlassPanel):
 
     def set_muted(self, muted: bool):
         self._muted = muted
-        self.mute_button.setText(Icons.MUTE if muted else Icons.VOLUME)
+        self.mute_button.set_icon(Icons.MUTE if muted else Icons.VOLUME)
         self.muted_changed.emit(muted)
 
     def set_play_button_state(self, is_playing: bool):
-        self.play_button.setText(Icons.PAUSE if is_playing else Icons.PLAY)
+        self.play_button.set_icon(Icons.PAUSE if is_playing else Icons.PLAY)
 
     def update_track_info(self, file_path: str | None, duration_ms: int = 0):
         if not file_path:

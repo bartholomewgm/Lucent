@@ -24,7 +24,8 @@ from ui.controls import (
     make_play_btn,
 )
 from ui.glass import GlassPanel
-from ui.styles import OVERLAY, Icons
+from ui.icons import Icons
+from ui.styles import OVERLAY
 
 
 class FullscreenControls(GlassPanel):
@@ -54,7 +55,6 @@ class FullscreenControls(GlassPanel):
         self._setup_ui(skip_seconds)
         # Над видео иконки и время ярче, чем на нижней панели
         self.setStyleSheet(control_styles(OVERLAY) + f"""
-            QPushButton#icon_btn, QPushButton#icon_btn:hover, QPushButton#icon_btn:pressed {{ font-size: 16px; }}
             QLabel#time_label {{ color: {OVERLAY.text}; font-size: 14px; }}
         """)
         self._setup_animation()
@@ -135,10 +135,10 @@ class FullscreenControls(GlassPanel):
     # ----- Состояние -----
 
     def set_play_button_state(self, is_playing: bool):
-        self.play_button.setText(Icons.PAUSE if is_playing else Icons.PLAY)
+        self.play_button.set_icon(Icons.PAUSE if is_playing else Icons.PLAY)
 
     def set_muted(self, muted: bool):
-        self.mute_button.setText(Icons.MUTE if muted else Icons.VOLUME)
+        self.mute_button.set_icon(Icons.MUTE if muted else Icons.VOLUME)
 
     def set_volume(self, value: int):
         self.volume_slider.blockSignals(True)

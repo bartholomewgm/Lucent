@@ -118,25 +118,6 @@ def load_fonts():
     font.setHintingPreference(QFont.HintingPreference.PreferNoHinting)  # ровные формы, как в iOS
     QApplication.setFont(font)
 
-# Системный шрифт иконок Windows 11 (Windows 10 — MDL2 с теми же кодами)
-ICON_FONT = "'Segoe Fluent Icons', 'Segoe MDL2 Assets'"
-
-
-class Icons:
-    PLAY = "\uF5B0"
-    PAUSE = "\uF8AE"
-    PREVIOUS = "\uF8AC"
-    NEXT = "\uF8AD"
-    VOLUME = "\uE767"
-    MUTE = "\uE74F"
-    FULLSCREEN = "\uE740"
-    EXIT_FULLSCREEN = "\uE73F"
-    ADD = "\uE710"
-    VIDEO = "\uE714"
-    SETTINGS = "\uE713"
-    CIRCLE_ARROW = "\uE72C"  # круговая стрелка по часовой
-
-
 def app_style(p=None) -> str:
     """Общий стиль окна: меню, подсказки, полосы прокрутки, системные диалоги"""
     p = p or T
