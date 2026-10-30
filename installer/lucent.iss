@@ -11,7 +11,7 @@ AppName=Lucent
 AppVersion={#AppVersion}
 AppVerName=Lucent {#AppVersion}
 AppPublisher=bartholomewgm
-AppPublisherURL=https://github.com/bartholomewgm/videoplayer
+AppPublisherURL=https://github.com/bartholomewgm/Lucent
 ; Только для текущего пользователя: права администратора не нужны
 PrivilegesRequired=lowest
 DefaultDirName={autopf}\Lucent
