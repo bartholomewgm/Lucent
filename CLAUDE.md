@@ -38,7 +38,7 @@ venv/Scripts/python.exe build.py                # PyInstaller build -> dist/Luce
 - `core/settings.py` — `Settings` wraps `QSettings` (INI at `%APPDATA%\Lucent\Lucent.ini`); every key and default lives in `DEFAULTS`, value types come from the defaults, and `changed(key, value)` is how `MainWindow` applies changes live. `ui/settings_dialog.py` writes straight to it.
 - `core/media_formats.py` — the single list of video extensions (open dialog, drag and drop, folder playlist, and the installer: `build.py` generates `dist/video_types.iss` from it).
 - `core/history.py` — SQLite resume positions: `database/history.db` when run from source, `%APPDATA%\Lucent\history.db` when frozen.
-- `core/folder_playlist.py` — "folder playlist" via `QFileSystemWatcher`; new files are added only after their size stops changing (downloads/copies in progress).
+- `core/folder_playlist.py` — "folder playlist" via `QFileSystemWatcher`; includes subfolders (`find_videos`, capped by `MAX_FOLDERS` so picking a whole drive can't hang the app); new files are added only after their size stops changing (downloads/copies in progress).
 - `core/thumbnailer.py` — cover image from a hidden, silent second `QMediaPlayer` paused at ~10% of duration.
 - `core/autostart.py` — HKCU `Run` key; command differs for source vs frozen exe.
 

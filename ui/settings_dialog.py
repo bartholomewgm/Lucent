@@ -29,6 +29,8 @@ from PyQt6.QtWidgets import (
 )
 
 from core import autostart
+from core.folder_playlist import find_videos
+from core.media_formats import VIDEO_EXTENSIONS
 from ui.glass import GlassPanel
 from ui.anim import SmoothAnimation
 from ui.glass_button import GlassLook, paint_glass, paint_glass_shadow
@@ -426,6 +428,7 @@ class SettingsDialog(QDialog):
         """Строка «папка»: путь под названием, кнопки «Сбросить» и «Выбрать…»"""
         hint = QLabel()
         hint.setObjectName("hint")
+        hint.setWordWrap(True)
         buttons = QWidget()
         buttons_layout = QHBoxLayout(buttons)
         buttons_layout.setContentsMargins(0, 0, 0, 0)
@@ -439,7 +442,13 @@ class SettingsDialog(QDialog):
 
         def update(folder: str):
             self.settings.set(key, folder)
-            hint.setText((folder if len(folder) <= 46 else "…" + folder[-45:]) if folder else tr(empty_text))
+            if folder:
+                # В окне выбора папки Windows файлов не показывает — говорим, что нашлось
+                videos, _ = find_videos(folder, VIDEO_EXTENSIONS)
+                found = tr("Видео, включая подпапки: {}").format(len(videos)) if videos else tr("В этой папке нет видео")
+                hint.setText((folder if len(folder) <= 46 else "…" + folder[-45:]) + "\n" + found)
+            else:
+                hint.setText(tr(empty_text))
             hint.setToolTip(folder)
             reset.setVisible(bool(folder))
 

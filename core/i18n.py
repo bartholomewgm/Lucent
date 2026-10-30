@@ -110,6 +110,8 @@ EN = {
     "Папки": "Folders",
     "Папка-плейлист": "Playlist folder",
     "Не выбрана — очередь собирается вручную": "Not set — the queue is built by hand",
+    "Видео, включая подпапки: {}": "Videos, including subfolders: {}",
+    "В этой папке нет видео": "No videos in this folder",
     "Следить за новыми видео": "Watch for new videos",
     "Новые файлы из папки сами появятся в очереди": "New files in the folder join the queue automatically",
     "Порядок в очереди": "Queue order",

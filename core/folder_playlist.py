@@ -1,20 +1,48 @@
 """
-Папка-плейлист: все видео из выбранной папки и слежение за ней.
+Папка-плейлист: все видео из выбранной папки и её подпапок, слежение за ними.
 Новый файл попадает в очередь только когда «дописан» — его размер перестал
 меняться (иначе в очередь попадёт видео, которое ещё скачивается или копируется).
 """
 
 import os
 import re
+from collections import deque
 from pathlib import Path
 
 from PyQt6.QtCore import QFileSystemWatcher, QObject, QTimer, pyqtSignal
 
 
+# Сколько папок просматривать: если выбрали целый диск, программа не должна зависнуть
+MAX_FOLDERS = 5000
+SKIPPED_FOLDERS = {"system volume information", "windows", "program files", "program files (x86)",
+                   "programdata", "appdata"}
+
+
+def find_videos(folder: str, extensions) -> tuple:
+    """
+    Видео в папке и подпапках: (множество файлов, список просмотренных папок).
+    Обход по уровням: при большом диске лимит съедают глубокие папки, а не верхние.
+    """
+    files, folders, queue = set(), [], deque([folder])
+    while queue and len(folders) < MAX_FOLDERS:
+        current = queue.popleft()
+        folders.append(current)
+        try:
+            with os.scandir(current) as entries:
+                for entry in entries:
+                    if entry.is_dir(follow_symlinks=False):
+                        if not entry.name.startswith((".", "$")) and entry.name.casefold() not in SKIPPED_FOLDERS:
+                            queue.append(entry.path)
+                    elif Path(entry.name).suffix.lower() in extensions:
+                        files.add(str(Path(entry.path).resolve()))
+        except OSError:
+            continue  # нет доступа — пропускаем папку
+    return files, folders
+
+
 def _natural_key(path: str):
-    """«Серия 2» раньше «Серия 10»"""
-    name = Path(path).name.casefold()
-    return [int(part) if part.isdigit() else part for part in re.split(r"(\d+)", name)]
+    """«Серия 2» раньше «Серия 10»; полный путь — чтобы подпапки шли группами"""
+    return [int(part) if part.isdigit() else part for part in re.split(r"(\d+)", path.casefold())]
 
 
 class FolderPlaylist(QObject):
@@ -30,6 +58,8 @@ class FolderPlaylist(QObject):
         self._extensions = {ext.lower() for ext in extensions}
         self._folder = None
         self._known = set()
+        self._watching = False
+        self._watched = set()  # папки, за которыми следим (новые подпапки добавляются сами)
         self._pending = {}  # путь -> (последний размер, сколько раз подряд не менялся)
 
         self._watcher = QFileSystemWatcher(self)
@@ -48,10 +78,11 @@ class FolderPlaylist(QObject):
         """Начать работу с папкой; вернуть её видео в нужном порядке"""
         self.stop()
         self._folder = str(Path(folder).resolve())
-        files = self._video_files()
+        files, folders = find_videos(self._folder, self._extensions)
         self._known = set(files)
+        self._watching = watch
         if watch:
-            self._watcher.addPath(self._folder)
+            self._watch(folders)
         return self.sorted(files, sort)
 
     def stop(self):
@@ -60,6 +91,8 @@ class FolderPlaylist(QObject):
         self._scan_timer.stop()
         self._stable_timer.stop()
         self._folder = None
+        self._watching = False
+        self._watched.clear()
         self._known.clear()
         self._pending.clear()
 
@@ -71,15 +104,12 @@ class FolderPlaylist(QObject):
 
     # ----- Слежение -----
 
-    def _video_files(self) -> set:
-        try:
-            with os.scandir(self._folder) as entries:
-                return {
-                    str(Path(e.path).resolve()) for e in entries
-                    if e.is_file() and Path(e.name).suffix.lower() in self._extensions
-                }
-        except OSError:
-            return set()
+    def _watch(self, folders):
+        self._watched &= set(folders)  # удалённые папки Qt забывает сам
+        new = [folder for folder in folders if folder not in self._watched]
+        if new:
+            self._watcher.addPaths(new)
+            self._watched.update(new)
 
     def _schedule_scan(self, _path=None):
         self._scan_timer.start()
@@ -87,7 +117,9 @@ class FolderPlaylist(QObject):
     def _scan(self):
         if not self._folder:
             return
-        current = self._video_files()
+        current, folders = find_videos(self._folder, self._extensions)
+        if self._watching:
+            self._watch(folders)
         for path in self._known - current:
             self._known.discard(path)
             self.removed.emit(path)
