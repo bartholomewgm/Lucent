@@ -31,6 +31,7 @@ from core.history import HistoryManager
 from core.settings import Settings
 from core.i18n import tr, set_language, retranslate
 from core.folder_playlist import FolderPlaylist
+from core.media_formats import FILE_FILTER_PATTERNS, VIDEO_EXTENSIONS
 from core.thumbnailer import Thumbnailer
 from core.ambient import AmbientColors
 
@@ -58,7 +59,7 @@ def set_window_border(widget, visible: bool):
 class MainWindow(QMainWindow):
     """Главное окно видеоплеера"""
 
-    VIDEO_EXTENSIONS = {".mp4", ".avi", ".mkv", ".mov", ".wmv", ".flv", ".webm", ".m4v"}
+    VIDEO_EXTENSIONS = set(VIDEO_EXTENSIONS)
     RESUME_MIN_MS = 5000  # меньше — не спрашиваем и не продолжаем, начинаем сначала
 
     def __init__(self):
@@ -150,7 +151,7 @@ class MainWindow(QMainWindow):
         root.setLayout(root_layout)
 
         self.setCentralWidget(root)
-        root.set_focus_widget(self.video_container)  # свечение цветов видео — вокруг него
+        root.set_focus_widget(self.video_container)  # ореол цветов видео — вокруг картинки
         self.video_container.set_placeholder_color(T.color("placeholder"))
 
     def _set_glass_layout(self, glass: bool):
@@ -514,7 +515,7 @@ class MainWindow(QMainWindow):
             folder = self.last_folder
         file_name, _ = QFileDialog.getOpenFileName(
             self, tr("Добавить видео"), folder,
-            tr("Видео (*.mp4 *.avi *.mkv *.mov *.wmv *.flv *.webm *.m4v)")
+            tr("Видео ({})").format(FILE_FILTER_PATTERNS) + ";;" + tr("Все файлы (*)")
         )
         if file_name:
             self.last_folder = str(Path(file_name).parent)

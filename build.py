@@ -15,7 +15,9 @@ from pathlib import Path
 
 import PyInstaller.__main__
 
-APP_VERSION = "1.0.1"
+from core.media_formats import VIDEO_EXTENSIONS
+
+APP_VERSION = "1.0.2"
 
 ROOT = Path(__file__).resolve().parent
 ICON = ROOT / "resources" / "icons" / "lucent.ico"
@@ -68,6 +70,10 @@ def build_installer():
     if not iscc:
         print("\nInno Setup 6 не найден — установщик не собран (winget install JRSoftware.InnoSetup)")
         return None
+    types_key = r"Software\Classes\Applications\Lucent.exe\SupportedTypes"
+    (DIST / "video_types.iss").write_text("".join(
+        f'Root: HKCU; Subkey: "{types_key}"; ValueType: string; ValueName: "{ext}"; ValueData: ""\n'
+        for ext in VIDEO_EXTENSIONS), encoding="utf-8")
     subprocess.run([iscc, "/Q", f"/DAppVersion={APP_VERSION}", str(ROOT / "installer" / "lucent.iss")],
                    check=True)
     return DIST / "Lucent-Setup.exe"

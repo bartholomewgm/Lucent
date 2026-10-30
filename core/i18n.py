@@ -48,8 +48,8 @@ EN = {
     # --- Окно, плейлист, файлы ---
     "Добавить видео": "Add video",
     "Добавить видео (Ctrl+O)": "Add video (Ctrl+O)",
-    "Видео (*.mp4 *.avi *.mkv *.mov *.wmv *.flv *.webm *.m4v)":
-        "Videos (*.mp4 *.avi *.mkv *.mov *.wmv *.flv *.webm *.m4v)",
+    "Видео ({})": "Videos ({})",
+    "Все файлы (*)": "All files (*)",
     "Продолжить с {}?\n\n{}": "Resume from {}?\n\n{}",
     "Свойства": "Properties",
     "Удалить из очереди": "Remove from queue",

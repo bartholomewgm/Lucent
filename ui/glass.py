@@ -28,15 +28,17 @@ class GlassBackground(QWidget):
     """
     Фон окна, на котором лежит стекло.
     «Градиент» — тёмные «обои» с цветными пятнами по всему окну.
-    «Тёмная»/«Светлая» — однотонный фон; цвета видео ложатся свечением
-    только вокруг окна воспроизведения (focus_widget).
+    «Тёмная»/«Светлая» — однотонный фон; от цветов видео остаётся только
+    небольшой ореол вокруг самой картинки (focus_widget).
     """
 
     # Пятна «Градиента»: центр (доля ширины, доля высоты), радиус (доля диагонали)
     BLOBS = (((0.08, 0.05), 0.55), ((0.95, 0.35), 0.50), ((0.35, 1.05), 0.45))
-    # Свечение вокруг видео: центр (доли прямоугольника видео), радиус (доля его диагонали)
-    FOCUS_BLOBS = (((0.05, 0.05), 0.50), ((1.0, 0.5), 0.45), ((0.5, 1.0), 0.45))
-    TRANSITION_MS = 1200
+    # Ореол вокруг картинки: ширина и число колец, из которых он складывается
+    HALO_WIDTH = 42
+    HALO_RINGS = 21
+    TRANSITION_MS = 900
+    AMBIENT_BOOST = 1.45  # пятна «Градиента» под цвета видео ярче обычных
     # Контур окна как у Windows 11: линия 1 px по краю, углы 8 px.
     # Системную рамку Windows не рисует — у окна свой заголовок (ui/window_frame.py)
     WINDOW_RADIUS = 8
@@ -46,11 +48,12 @@ class GlassBackground(QWidget):
         self.setAttribute(Qt.WidgetAttribute.WA_StyledBackground, False)
         self.plain = False   # в полноэкранном режиме — просто чёрный фон
         self.outline = True  # в развёрнутом окне контура нет, как у системных окон
-        self.focus_widget = None  # окно видео: вокруг него свечение в однотонных темах
+        self.focus_widget = None  # окно видео (VideoFrame): вокруг картинки ореол в однотонных темах
         self._ambient = False     # сейчас показаны цвета видео, а не цвета темы
         self._colors = self._default_colors()
         self._from = list(self._colors)
         self._to = list(self._colors)
+        self._boost = self._boost_from = 1.0
         self._anim = QVariantAnimation(self)
         self._anim.setStartValue(0.0)
         self._anim.setEndValue(1.0)
@@ -67,9 +70,14 @@ class GlassBackground(QWidget):
         return [QColor(base.red(), base.green(), base.blue(), 0) for _ in range(3)]
 
     def set_focus_widget(self, widget):
-        """Окно видео: свечение следует за ним (скрытие плейлиста, изменение размера)"""
+        """Окно видео: ореол следует за картинкой (скрытие плейлиста, изменение размера)"""
         self.focus_widget = widget
         widget.installEventFilter(self)
+        widget.picture_changed.connect(self._on_picture_changed)
+
+    def _on_picture_changed(self):
+        if T.flat and self._ambient:
+            self.update()
 
     def eventFilter(self, obj, event):
         if obj is self.focus_widget and event.type() in (QEvent.Type.Move, QEvent.Type.Resize):
@@ -92,32 +100,59 @@ class GlassBackground(QWidget):
         self._anim.stop()
         if not self._ambient:
             self._colors = self._default_colors()
+            self._boost = 1.0
         self.update()
 
     def _animate_to(self, colors):
         self._from = list(self._colors)
         self._to = colors
+        self._boost_from = self._boost
         self._anim.stop()
         self._anim.start()
 
     def _blend(self, t):
         self._colors = [_lerp(a, b, t) for a, b in zip(self._from, self._to)]
+        target = self.AMBIENT_BOOST if self._ambient else 1.0
+        self._boost = self._boost_from + (target - self._boost_from) * t
         if not self.plain:
             self.update()
 
-    def _blob_layout(self, rect: QRectF):
-        """Где рисовать пятна: по всему окну («Градиент») или вокруг видео"""
-        if not T.flat:
-            diagonal = (rect.width() ** 2 + rect.height() ** 2) ** 0.5
-            return [(QPointF(rect.width() * fx, rect.height() * fy), diagonal * fr)
-                    for (fx, fy), fr in self.BLOBS]
-        if self.focus_widget is None or not self.focus_widget.isVisible():
-            return []
-        area = QRectF(self.focus_widget.geometry())
-        area.moveTopLeft(QPointF(self.focus_widget.mapTo(self, self.focus_widget.rect().topLeft())))
-        diagonal = (area.width() ** 2 + area.height() ** 2) ** 0.5
-        return [(QPointF(area.x() + area.width() * fx, area.y() + area.height() * fy), diagonal * fr)
-                for (fx, fy), fr in self.FOCUS_BLOBS]
+    def _paint_blobs(self, p: QPainter, rect: QRectF):
+        """«Градиент»: цветные пятна по всему окну"""
+        diagonal = (rect.width() ** 2 + rect.height() ** 2) ** 0.5
+        for color, ((fx, fy), fr), strength in zip(self._colors, self.BLOBS, T.glow):
+            grad = QRadialGradient(QPointF(rect.width() * fx, rect.height() * fy), diagonal * fr)
+            inner = QColor(color)
+            inner.setAlpha(min(255, round(strength * self._boost * color.alphaF())))
+            outer = QColor(color)
+            outer.setAlpha(0)
+            grad.setColorAt(0.0, inner)
+            grad.setColorAt(1.0, outer)
+            p.fillRect(rect, grad)
+
+    def _paint_halo(self, p: QPainter):
+        """Однотонные темы: узкий ореол цветов кадра вокруг видимой картинки"""
+        widget = self.focus_widget
+        if widget is None or not widget.isVisible():
+            return
+        picture = widget.picture_rect().translated(QPointF(widget.mapTo(self, widget.rect().topLeft())))
+        if picture.width() <= 0:
+            return
+        brush = QLinearGradient(picture.topLeft(), picture.topRight())
+        brush.setColorAt(0.0, self._colors[0])
+        brush.setColorAt(0.5, self._colors[2])
+        brush.setColorAt(1.0, self._colors[1])
+        p.save()
+        p.setPen(Qt.PenStyle.NoPen)
+        p.setBrush(brush)
+        strength, rings = T.glow[0] / 255, self.HALO_RINGS
+        step = 2 * strength / (rings * (rings + 1))  # у картинки плотнее, наружу сходит на нет
+        for i in range(rings):
+            spread = self.HALO_WIDTH * (1 - i / rings)
+            radius = GLASS_RADIUS + spread
+            p.setOpacity(step * (i + 1))
+            p.drawRoundedRect(picture.adjusted(-spread, -spread, spread, spread), radius, radius)
+        p.restore()
 
     def paintEvent(self, event):
         p = QPainter(self)
@@ -129,17 +164,10 @@ class GlassBackground(QWidget):
             return
 
         p.fillRect(rect, T.color("base"))
-        for color, (center, radius), strength in zip(self._colors, self._blob_layout(rect), T.glow):
-            if color.alpha() == 0 or radius <= 0:
-                continue
-            grad = QRadialGradient(center, radius)
-            inner = QColor(color)
-            inner.setAlpha(round(strength * color.alphaF()))
-            outer = QColor(color)
-            outer.setAlpha(0)
-            grad.setColorAt(0.0, inner)
-            grad.setColorAt(1.0, outer)
-            p.fillRect(rect, grad)
+        if T.flat:
+            self._paint_halo(p)
+        else:
+            self._paint_blobs(p, rect)
 
         if self.outline:
             p.setPen(QPen(T.color("outline"), 1.0))

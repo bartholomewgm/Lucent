@@ -8,7 +8,7 @@ Windows, — поэтому углы гладкие, а не вырезанны�
 
 from pathlib import Path
 
-from PyQt6.QtCore import QObject, Qt, QUrl, pyqtSignal
+from PyQt6.QtCore import QObject, QRectF, Qt, QUrl, pyqtSignal
 from PyQt6.QtQuickWidgets import QQuickWidget
 
 QML_FILE = Path(__file__).resolve().parent / "video.qml"
@@ -26,6 +26,7 @@ ASPECT_MODES = (
 
 class VideoFrame(QQuickWidget):
     double_clicked = pyqtSignal()
+    picture_changed = pyqtSignal()  # картинка сдвинулась или сменила размер
 
     def __init__(self, radius: int):
         super().__init__()
@@ -45,11 +46,16 @@ class VideoFrame(QQuickWidget):
         # (не lambda), чтобы Qt доставил его в главный поток
         self._sink = self.video_output.property("videoSink")
         self._sink.videoSizeChanged.connect(self._on_video_size_changed)
+        self.rootObject().pictureRectChanged.connect(self.picture_changed)
 
     def _on_video_size_changed(self):
         size = self._sink.videoSize()
         aspect = size.width() / size.height() if size.height() > 0 else 0
         self.rootObject().setProperty("videoAspect", aspect)
+
+    def picture_rect(self) -> QRectF:
+        """Видимая картинка в координатах виджета"""
+        return QRectF(self.rootObject().property("pictureRect"))
 
     def set_placeholder_color(self, color):
         self.rootObject().setProperty("placeholderColor", color)

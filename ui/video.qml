@@ -1,6 +1,6 @@
 // Видео со скруглёнными сглаженными углами и выбором формата картинки.
 // Маска повторяет видимую картинку, а не всю область, — поэтому скругляются
-// углы самого видео. Поля вокруг картинки заполняет её размытая копия.
+// углы самого видео. В полях вокруг картинки виден фон окна.
 import QtQuick
 import QtQuick.Effects
 import QtMultimedia
@@ -31,9 +31,9 @@ Item {
     readonly property rect pictureInVideo: (mode === "auto" && !smartFill)
         ? video.contentRect
         : Qt.rect(0, 0, video.width, video.height)
-    // Вокруг картинки остаются поля (скрыт плейлист, высокое окно, 4:3…)
-    readonly property bool hasGaps: hasVideo && rounded && pictureInVideo.width > 0
-        && (pictureInVideo.width < width - 2 || pictureInVideo.height < height - 2)
+    // Видимая картинка в координатах всей области — вокруг неё светится фон окна
+    readonly property rect pictureRect: Qt.rect(frame.x + pictureInVideo.x, frame.y + pictureInVideo.y,
+                                                pictureInVideo.width, pictureInVideo.height)
 
     // Подложка на месте будущей картинки, пока видео нет
     Rectangle {
@@ -42,58 +42,6 @@ Item {
         color: root.placeholderColor
         antialiasing: true
         visible: root.rounded && !root.hasVideo
-    }
-
-    // ----- Поля: размытая копия картинки на всю область (как «эмбиент» у YouTube) -----
-
-    Item {
-        id: backdrop
-        anchors.fill: parent
-        visible: root.hasGaps
-        clip: true
-        layer.enabled: visible
-        layer.effect: MultiEffect {
-            maskEnabled: true
-            maskSource: backdropMask
-            maskThresholdMin: 0.5
-            maskSpreadAtMin: 1.0
-        }
-
-        MultiEffect {
-            // Тот же снимок, что у картинки (fullPicture), увеличенный так, чтобы
-            // картинка с запасом закрыла всю область (запас прячет размытые края).
-            // Делить слой самого video между двумя эффектами нельзя — картинка ломается
-            readonly property rect pic: root.pictureInVideo
-            readonly property real k: pic.width > 0
-                ? Math.max(root.width / pic.width, root.height / pic.height) * 1.1
-                : 1
-            source: fullPicture
-            width: video.width * k
-            height: video.height * k
-            // центр картинки — в центр области
-            x: root.width / 2 - (pic.x + pic.width / 2) * k
-            y: root.height / 2 - (pic.y + pic.height / 2) * k
-            // Сильное размытие: в поля попадают цвета из глубины кадра, а не тёмная кромка
-            blurEnabled: true
-            blur: 1.0
-            blurMax: 64
-            blurMultiplier: 3.0
-            saturation: 0.35
-            brightness: 0.05
-        }
-    }
-
-    Item {
-        id: backdropMask
-        anchors.fill: parent
-        visible: false
-        layer.enabled: true
-        layer.smooth: true
-        Rectangle {
-            anchors.fill: parent
-            radius: root.radius
-            antialiasing: true
-        }
     }
 
     // ----- Сама картинка -----

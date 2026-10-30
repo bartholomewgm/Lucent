@@ -52,14 +52,8 @@ Name: "{autodesktop}\Lucent"; Filename: "{app}\Lucent.exe"; Tasks: desktopicon
 ; Lucent в списке «Открыть с помощью» для видеофайлов
 Root: HKCU; Subkey: "Software\Classes\Applications\Lucent.exe"; ValueType: string; ValueName: "FriendlyAppName"; ValueData: "Lucent"; Flags: uninsdeletekey
 Root: HKCU; Subkey: "Software\Classes\Applications\Lucent.exe\shell\open\command"; ValueType: string; ValueData: """{app}\Lucent.exe"" ""%1"""
-Root: HKCU; Subkey: "Software\Classes\Applications\Lucent.exe\SupportedTypes"; ValueType: string; ValueName: ".mp4"; ValueData: ""
-Root: HKCU; Subkey: "Software\Classes\Applications\Lucent.exe\SupportedTypes"; ValueType: string; ValueName: ".mkv"; ValueData: ""
-Root: HKCU; Subkey: "Software\Classes\Applications\Lucent.exe\SupportedTypes"; ValueType: string; ValueName: ".avi"; ValueData: ""
-Root: HKCU; Subkey: "Software\Classes\Applications\Lucent.exe\SupportedTypes"; ValueType: string; ValueName: ".mov"; ValueData: ""
-Root: HKCU; Subkey: "Software\Classes\Applications\Lucent.exe\SupportedTypes"; ValueType: string; ValueName: ".wmv"; ValueData: ""
-Root: HKCU; Subkey: "Software\Classes\Applications\Lucent.exe\SupportedTypes"; ValueType: string; ValueName: ".flv"; ValueData: ""
-Root: HKCU; Subkey: "Software\Classes\Applications\Lucent.exe\SupportedTypes"; ValueType: string; ValueName: ".webm"; ValueData: ""
-Root: HKCU; Subkey: "Software\Classes\Applications\Lucent.exe\SupportedTypes"; ValueType: string; ValueName: ".m4v"; ValueData: ""
+; Расширения — из core/media_formats.py, файл создаёт build.py
+#include "..\dist\video_types.iss"
 
 ; Автозапуск включается в настройках программы — при удалении убираем и его
 Root: HKCU; Subkey: "Software\Microsoft\Windows\CurrentVersion\Run"; ValueType: none; ValueName: "Lucent"; Flags: uninsdeletevalue
