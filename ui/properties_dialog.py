@@ -28,7 +28,7 @@ def _text(value) -> str:
 def _number(value: float, digits: int = 2) -> str:
     """59.94 -> «59,94», 30.0 -> «30»"""
     text = f"{value:.{digits}f}".rstrip("0").rstrip(".")
-    return text.replace(".", ",") if language() == "ru" else text
+    return text.replace(".", ",") if language() in ("ru", "uk") else text
 
 
 def _size(size) -> str:
