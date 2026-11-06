@@ -12,3 +12,6 @@ venv/
 # Сборка приложения (build.py)
 build/
 dist/
+
+# Заметки для Claude Code — только локально
+CLAUDE.md

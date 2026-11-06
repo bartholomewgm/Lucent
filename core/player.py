@@ -72,6 +72,11 @@ class VideoPlayer(QObject):
     def stop(self):
         self.player.stop()
 
+    def unload(self):
+        """Остановить и забыть файл"""
+        self.player.stop()
+        self.player.setSource(QUrl())
+
     def is_playing(self) -> bool:
         return self.player.playbackState() == QMediaPlayer.PlaybackState.PlayingState
 

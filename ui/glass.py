@@ -3,13 +3,17 @@
 фон-«обои» и полупрозрачные панели с бликом по краю. Цвета — из текущей темы (ui/styles.py).
 """
 
+import math
+
 from PyQt6.QtCore import QEasingCurve, QEvent, QPointF, QRectF, Qt, QVariantAnimation, pyqtSignal
 from PyQt6.QtGui import (
     QColor,
+    QImage,
     QLinearGradient,
     QPainter,
     QPainterPath,
     QPen,
+    QPixmap,
     QRadialGradient,
 )
 from PyQt6.QtWidgets import QMenu, QWidget
@@ -24,13 +28,17 @@ def _lerp(a: QColor, b: QColor, t: float) -> QColor:
                   round(a.alpha() + (b.alpha() - a.alpha()) * t))
 
 
-def paint_halo(p: QPainter, picture: QRectF, colors, strength: float, width: float, corner: float):
-    """Мягкий ореол цветов вокруг прямоугольника: слева colors[0], по центру [2], справа [1]"""
-    rings = 21
+def _halo_brush(picture: QRectF, colors) -> QLinearGradient:
     brush = QLinearGradient(picture.topLeft(), picture.topRight())
     brush.setColorAt(0.0, colors[0])
     brush.setColorAt(0.5, colors[2])
     brush.setColorAt(1.0, colors[1])
+    return brush
+
+
+def _paint_halo_rings(p: QPainter, picture: QRectF, brush, strength: float, width: float, corner: float):
+    """Ореол как он есть: два десятка скруглённых слоёв, у картинки плотнее"""
+    rings = 21
     p.save()
     p.setPen(Qt.PenStyle.NoPen)
     p.setBrush(brush)
@@ -41,6 +49,69 @@ def paint_halo(p: QPainter, picture: QRectF, colors, strength: float, width: flo
         p.setOpacity(step * (i + 1))
         p.drawRoundedRect(picture.adjusted(-spread, -spread, spread, spread), radius, radius)
     p.restore()
+
+
+_halo_masks = {}
+
+
+def _halo_mask(strength: float, width: float, corner: float) -> QImage:
+    """Образец ореола (белый) вокруг маленького прямоугольника: углы и полоски краёв"""
+    key = (strength, width, corner)
+    mask = _halo_masks.get(key)
+    if mask is None:
+        edge = math.ceil(width + corner)
+        size = 2 * edge + 2
+        mask = QImage(size, size, QImage.Format.Format_ARGB32_Premultiplied)
+        mask.fill(Qt.GlobalColor.transparent)
+        painter = QPainter(mask)
+        painter.setRenderHint(QPainter.RenderHint.Antialiasing)
+        inner = QRectF(width, width, size - 2 * width, size - 2 * width)
+        _paint_halo_rings(painter, inner, QColor("white"), strength, width, corner)
+        painter.end()
+        _halo_masks[key] = mask
+    return mask
+
+
+def paint_halo(p: QPainter, picture: QRectF, colors, strength: float, width: float, corner: float):
+    """
+    Мягкий ореол цветов вокруг прямоугольника: слева colors[0], по центру [2], справа [1].
+
+    Слоёв два десятка, и рисовать их заново на каждом кадре дорого (несколько мс
+    на картинку во всё окно). Поэтому ореол собирается из образца: углы как есть,
+    края — растянутые полоски, и всё это окрашивается цветами видео.
+    Середину (под самой картинкой) не рисуем — её закрывает видео.
+    """
+    mask = _halo_mask(strength, width, corner)
+    size = mask.width()
+    edge = (size - 2) // 2
+    outer = picture.adjusted(-width, -width, width, width).toAlignedRect()
+    if outer.width() < size or outer.height() < size:
+        _paint_halo_rings(p, picture, _halo_brush(picture, colors), strength, width, corner)
+        return
+    brush = _halo_brush(picture, colors)
+    x0, y0, x1, y1 = outer.left(), outer.top(), outer.left() + outer.width(), outer.top() + outer.height()
+    long_w, long_h = outer.width() - 2 * edge, outer.height() - 2 * edge
+    pieces = (  # (куда: x, y, ширина, высота), (откуда в образце)
+        ((x0, y0, edge, edge), (0, 0, edge, edge)),
+        ((x1 - edge, y0, edge, edge), (size - edge, 0, edge, edge)),
+        ((x0, y1 - edge, edge, edge), (0, size - edge, edge, edge)),
+        ((x1 - edge, y1 - edge, edge, edge), (size - edge, size - edge, edge, edge)),
+        ((x0 + edge, y0, long_w, edge), (edge, 0, 2, edge)),
+        ((x0 + edge, y1 - edge, long_w, edge), (edge, size - edge, 2, edge)),
+        ((x0, y0 + edge, edge, long_h), (0, edge, edge, 2)),
+        ((x1 - edge, y0 + edge, edge, long_h), (size - edge, edge, edge, 2)),
+    )
+    for (x, y, w, h), source in pieces:
+        piece = QImage(w, h, QImage.Format.Format_ARGB32_Premultiplied)
+        piece.fill(Qt.GlobalColor.transparent)
+        painter = QPainter(piece)
+        painter.setRenderHint(QPainter.RenderHint.SmoothPixmapTransform)
+        painter.drawImage(QRectF(0, 0, w, h), mask, QRectF(*source))
+        painter.setCompositionMode(QPainter.CompositionMode.CompositionMode_SourceIn)
+        painter.translate(-x, -y)  # цвета — по всей ширине картинки, как у целого ореола
+        painter.fillRect(QRectF(x, y, w, h), brush)
+        painter.end()
+        p.drawImage(x, y, piece)
 
 
 class GlassBackground(QWidget):
@@ -61,6 +132,9 @@ class GlassBackground(QWidget):
     # Контур окна как у Windows 11: линия 1 px по краю, углы 8 px.
     # Системную рамку Windows не рисует — у окна свой заголовок (ui/window_frame.py)
     WINDOW_RADIUS = 8
+    # Пятна размытые — их хватает нарисовать вчетверо меньше и растянуть: иначе
+    # три градиента на всё окно — самая дорогая часть кадра при растягивании окна
+    BLOB_SCALE = 4
 
     def __init__(self, parent=None):
         super().__init__(parent)
@@ -79,6 +153,8 @@ class GlassBackground(QWidget):
         self._anim.setDuration(self.TRANSITION_MS)
         self._anim.setEasingCurve(QEasingCurve.Type.InOutSine)
         self._anim.valueChanged.connect(self._blend)
+        self._blob_key = None
+        self._blob_image = None
 
     @staticmethod
     def _default_colors():
@@ -154,6 +230,19 @@ class GlassBackground(QWidget):
             grad.setColorAt(1.0, outer)
             p.fillRect(rect, grad)
 
+    def _blob_layer(self, width: int, height: int) -> QImage:
+        key = (width, height, tuple(c.rgba() for c in self._colors), self._boost, tuple(T.glow))
+        if key != self._blob_key:
+            scale = self.BLOB_SCALE
+            image = QImage(max(1, math.ceil(width / scale)), max(1, math.ceil(height / scale)),
+                           QImage.Format.Format_ARGB32_Premultiplied)
+            image.fill(Qt.GlobalColor.transparent)
+            painter = QPainter(image)
+            self._paint_blobs(painter, QRectF(0, 0, width / scale, height / scale))
+            painter.end()
+            self._blob_key, self._blob_image = key, image
+        return self._blob_image
+
     def _paint_halo(self, p: QPainter):
         """Однотонные темы: узкий ореол цветов кадра вокруг видимой картинки"""
         widget = self.focus_widget
@@ -177,7 +266,12 @@ class GlassBackground(QWidget):
         if T.flat:
             self._paint_halo(p)
         else:
-            self._paint_blobs(p, rect)
+            scale = self.BLOB_SCALE
+            p.save()
+            p.setRenderHint(QPainter.RenderHint.SmoothPixmapTransform)
+            p.drawImage(rect, self._blob_layer(self.width(), self.height()),
+                        QRectF(0, 0, rect.width() / scale, rect.height() / scale))
+            p.restore()
 
         if self.outline:
             p.setPen(QPen(T.color("outline"), 1.0))
@@ -195,12 +289,44 @@ class GlassPanel(QWidget):
         self.radius = radius
         self.tint_alpha = tint_alpha  # насколько стекло закрывает то, что под ним (None — как в теме)
         self.palette_override = palette  # None — текущая тема (полноэкранная панель всегда тёмная)
+        self._sample_key = None
+        self._sample = None
 
     def paintEvent(self, event):
+        """
+        По горизонтали панель везде одинакова, кроме скруглённых краёв. Поэтому
+        рисуется узкий образец (два края и полоска между ними), а середина
+        растягивается из полоски. Рисовать всю панель заново на каждом шаге
+        растягивания окна и при каждом обновлении кнопок и времени — дорого.
+        """
         pal = self.palette_override or T
+        w, h = self.width(), self.height()
+        cap = self.radius + self.FEATHER + 2  # край целиком, с запасом
         p = QPainter(self)
+        if w < 2 * cap + 4:
+            self._paint_panel(p, pal, w, h)
+            return
+        dpr = self.devicePixelRatioF()
+        sample_w = 2 * cap + 2
+        key = (h, dpr, self.radius, self.tint_alpha, pal.color("panel").rgba(), pal.color("sheen").rgba(),
+               pal.color("edge_line").rgba(), tuple(pal.edge))
+        if key != self._sample_key:
+            sample = QPixmap(math.ceil(sample_w * dpr), math.ceil(h * dpr))
+            sample.setDevicePixelRatio(dpr)
+            sample.fill(Qt.GlobalColor.transparent)
+            painter = QPainter(sample)
+            self._paint_panel(painter, pal, sample_w, h)
+            painter.end()
+            self._sample_key, self._sample = key, sample
+        sample = self._sample
+        p.setRenderHint(QPainter.RenderHint.SmoothPixmapTransform)
+        p.drawPixmap(QRectF(0, 0, cap, h), sample, QRectF(0, 0, cap * dpr, h * dpr))
+        p.drawPixmap(QRectF(cap, 0, w - 2 * cap, h), sample, QRectF(cap * dpr, 0, 2 * dpr, h * dpr))
+        p.drawPixmap(QRectF(w - cap, 0, cap, h), sample, QRectF((sample_w - cap) * dpr, 0, cap * dpr, h * dpr))
+
+    def _paint_panel(self, p: QPainter, pal, w: int, h: int):
         p.setRenderHint(QPainter.RenderHint.Antialiasing)
-        rect = QRectF(self.rect()).adjusted(0.5, 0.5, -0.5, -0.5)
+        rect = QRectF(0, 0, w, h).adjusted(0.5, 0.5, -0.5, -0.5)
         path = QPainterPath()
         path.addRoundedRect(rect, self.radius, self.radius)
 

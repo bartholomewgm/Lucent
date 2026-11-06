@@ -17,7 +17,7 @@ import PyInstaller.__main__
 
 from core.media_formats import VIDEO_EXTENSIONS
 
-APP_VERSION = "1.0.2"
+APP_VERSION = "1.0.3"
 
 ROOT = Path(__file__).resolve().parent
 ICON = ROOT / "resources" / "icons" / "lucent.ico"

@@ -4,6 +4,8 @@
 Декодирует их FFmpeg из состава Qt — он читает все эти контейнеры.
 """
 
+from pathlib import Path
+
 VIDEO_EXTENSIONS = (
     ".mp4", ".m4v", ".mov", ".3gp", ".3g2", ".mkv", ".webm",
     ".avi", ".divx", ".wmv", ".asf", ".flv", ".f4v",
@@ -13,3 +15,8 @@ VIDEO_EXTENSIONS = (
 )
 
 FILE_FILTER_PATTERNS = " ".join(f"*{ext}" for ext in VIDEO_EXTENSIONS)
+
+
+def is_video(path) -> bool:
+    """Видео ли это по расширению. Картинки, документы и прочее плеер не принимает"""
+    return Path(path).suffix.lower() in VIDEO_EXTENSIONS

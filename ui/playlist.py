@@ -3,6 +3,7 @@ from pathlib import Path
 from PyQt6.QtWidgets import QListWidget, QListWidgetItem, QWidget, QLabel, QVBoxLayout
 from PyQt6.QtCore import Qt, pyqtSignal
 from core.i18n import tr
+from core.media_formats import is_video
 
 from ui.glass import make_glass_menu
 from ui.styles import T
@@ -72,7 +73,10 @@ class PlaylistWidget(QListWidget):
             self.remove_requested.emit(path)
 
     def add_video(self, file_path: str) -> int:
+        """Добавить видео в очередь. Не видео не добавляется: -1"""
         file_path = str(Path(file_path).resolve())
+        if not is_video(file_path):
+            return -1
         if file_path in self.video_files:
             return self.video_files.index(file_path)
 
@@ -108,19 +112,31 @@ class PlaylistWidget(QListWidget):
     def current_video(self):
         return self.get_video_path(self.currentRow())
 
-    def next_video(self):
-        row = self.currentRow() + 1
+    def _row_of(self, current) -> int:
+        """Строка играющего видео; выделение пользователь мог перевести на другую"""
+        if current:
+            path = str(Path(current).resolve())
+            if path in self.video_files:
+                return self.video_files.index(path)
+        return self.currentRow()
+
+    def next_video(self, current=None):
+        """Видео после current (играющего); без него — после выделенного"""
+        row = self._row_of(current) + 1
         if row < self.count():
             self.setCurrentRow(row)
             return self.get_video_path(row)
         return None
 
-    def previous_video(self):
-        row = self.currentRow() - 1
+    def previous_video(self, current=None):
+        row = self._row_of(current) - 1
         if row >= 0:
             self.setCurrentRow(row)
             return self.get_video_path(row)
         return None
+
+    def has_next(self, current=None) -> bool:
+        return self._row_of(current) + 1 < self.count()
 
     def clear_playlist(self):
         self.clear()

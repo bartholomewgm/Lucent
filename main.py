@@ -15,6 +15,7 @@ from PyQt6.QtGui import QIcon
 from PyQt6.QtWidgets import QApplication, QMessageBox
 from ui.main_window import MainWindow
 from core.i18n import tr
+from core.single_instance import InstanceServer, is_first_instance, send_to_running
 
 APP_NAME = "Lucent"
 # В собранном приложении файлы лежат в папке распаковки PyInstaller
@@ -40,16 +41,22 @@ def main():
     app = QApplication(sys.argv)
     app.setApplicationName(APP_NAME)
     app.setWindowIcon(QIcon(str(APP_ICON)))
-    
+
+    # Файлы из командной строки: «Открыть с помощью», перетаскивание на значок.
+    # Пути полные: запущенная копия работает в другой текущей папке
+    files = [str(Path(arg).resolve()) for arg in sys.argv[1:] if Path(arg).is_file()]
+
+    # Lucent уже открыт — отдать файлы ему и выйти, второе окно не нужно
+    if not is_first_instance():
+        send_to_running(files)
+        return
+    server = InstanceServer()
+    server.listen()
+
     window = MainWindow()
     window.show()
-
-    # Файлы из командной строки: «Открыть с помощью», перетаскивание на значок
-    files = [arg for arg in sys.argv[1:] if Path(arg).is_file()]
-    for path in files[1:]:
-        window.playlist.add_video(path)
-    if files:
-        window.load_video(files[0])
+    server.files_received.connect(window.open_external)
+    window.open_files(files)
 
     sys.exit(app.exec())
 

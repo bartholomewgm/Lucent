@@ -32,7 +32,7 @@ from core.history import HistoryManager
 from core.settings import Settings
 from core.i18n import tr, set_language, retranslate
 from core.folder_playlist import FolderPlaylist
-from core.media_formats import FILE_FILTER_PATTERNS, VIDEO_EXTENSIONS
+from core.media_formats import FILE_FILTER_PATTERNS, VIDEO_EXTENSIONS, is_video
 from core.thumbnailer import Thumbnailer
 from core.ambient import AmbientColors
 
@@ -394,17 +394,20 @@ class MainWindow(QMainWindow):
 
     # --- Drag & Drop ---
 
+    @staticmethod
+    def _dropped_videos(event) -> list:
+        return [url.toLocalFile() for url in event.mimeData().urls()
+                if url.isLocalFile() and is_video(url.toLocalFile())]
+
     def dragEnterEvent(self, event: QDragEnterEvent):
-        if event.mimeData().hasUrls():
+        # Без видео среди файлов курсор показывает «нельзя», а не «добавить»
+        if self._dropped_videos(event):
             event.acceptProposedAction()
+        else:
+            event.ignore()
 
     def dropEvent(self, event: QDropEvent):
-        for url in event.mimeData().urls():
-            if url.isLocalFile():
-                path = url.toLocalFile()
-                if Path(path).suffix.lower() in self.VIDEO_EXTENSIONS:
-                    self.load_video(path)
-                    break
+        self.open_files(self._dropped_videos(event))
 
     # --- Громкость ---
 
@@ -412,6 +415,9 @@ class MainWindow(QMainWindow):
         self.player.set_volume(value)
         if value > 0:
             self.controls.set_muted(False)
+        elif not self.controls._muted:
+            # Ползунок увели в ноль — значок «без звука»; M вернёт прежнюю громкость
+            self.controls.set_muted(True)
 
     def _volume_up(self):
         v = min(100, self.controls.volume_slider.value() + 5)
@@ -470,10 +476,12 @@ class MainWindow(QMainWindow):
     def enter_mini(self):
         if self._mini_active or not self.current_file_path:
             return
+        # Запомнить до всего остального: при создании мини-плеера Qt на миг
+        # перестаёт считать окно развёрнутым, и после возврата оно бы не развернулось
+        self._main_was_maximized = self.isMaximized()
         self.exit_fullscreen()
         if self.mini is None:
             self._create_mini()
-        self._main_was_maximized = self.isMaximized()
         self.mini.set_skip_seconds(self.settings.get("skip_seconds"))
         self.mini.set_duration(self.player.duration())
         self.mini.set_position(self.player.player.position())
@@ -572,11 +580,35 @@ class MainWindow(QMainWindow):
             folder = self.last_folder
         file_name, _ = QFileDialog.getOpenFileName(
             self, tr("Добавить видео"), folder,
-            tr("Видео ({})").format(FILE_FILTER_PATTERNS) + ";;" + tr("Все файлы (*)")
+            tr("Видео ({})").format(FILE_FILTER_PATTERNS)
         )
         if file_name:
             self.last_folder = str(Path(file_name).parent)
             self.load_video(file_name)
+
+    def open_files(self, files: list):
+        """Файлы снаружи (командная строка, «Открыть с помощью»): первый играет, остальные — в очередь"""
+        files = [f for f in files if Path(f).is_file() and is_video(f)]
+        for path in files:  # в очередь — в том же порядке, первый тоже на своё место
+            self.playlist.add_video(path)
+        if files:
+            self.load_video(files[0])
+
+    def open_external(self, files: list):
+        """Повторный запуск Lucent: открыть его файлы здесь и показать окно"""
+        self.open_files(files)
+        self.bring_to_front()
+
+    def bring_to_front(self):
+        if self._mini_active:
+            window = self.mini
+        else:
+            window = self
+            if self.isMinimized():
+                self.setWindowState(self.windowState() & ~Qt.WindowState.WindowMinimized)
+            self.show()
+        window.raise_()
+        window.activateWindow()
 
     def load_video(self, file_path: str):
         file_path = str(Path(file_path).resolve())
@@ -584,6 +616,10 @@ class MainWindow(QMainWindow):
         self._save_progress()
         if not Path(file_path).is_file():
             QMessageBox.warning(self, tr("Ошибка"), tr("Не удалось загрузить видео:\n{}").format(file_path))
+            return
+        if not is_video(file_path):
+            # В окне выбора можно вписать «*.*» и выбрать картинку — сюда она не пройдёт
+            QMessageBox.warning(self, tr("Ошибка"), tr("Это не видео:\n{}").format(file_path))
             return
 
         # Место продолжения и текущий файл — ДО открытия: ffmpeg может сообщить
@@ -634,12 +670,17 @@ class MainWindow(QMainWindow):
         self._save_progress()  # досмотренное — в следующий раз с начала
         action = self.settings.get("on_end")
         if action == "repeat":
-            self.player.set_position(0)
-            self.player.play()
-        elif action == "next" and self.playlist.currentRow() < self.playlist.count() - 1:
+            # Не прямо из сигнала «конец файла»: там Qt ещё останавливается и play() теряется
+            QTimer.singleShot(0, self._restart)
+        elif action == "next" and self.playlist.has_next(self.current_file_path):
             self.next_video()
         else:
             self._set_play_state(False)
+
+    def _restart(self):
+        if self.current_file_path:
+            self.player.set_position(0)
+            self.player.play()
 
     def reload_video(self):
         if self.current_file_path:
@@ -660,7 +701,7 @@ class MainWindow(QMainWindow):
         if path == self.current_file_path:
             self._save_progress()  # место просмотра не теряется
             self.exit_mini()
-            self.player.stop()
+            self.player.unload()  # иначе Play снова запустил бы убранное видео
             self.current_file_path = None
             self.ambient.reset()
             self.root.reset_colors()
@@ -672,6 +713,8 @@ class MainWindow(QMainWindow):
             self.fs_controls.set_position(0)
         self._folder_items.discard(path)
         self.playlist.remove_path(path)
+        if self.current_file_path:
+            self.playlist.select_video(self.current_file_path)  # подсветка — снова на играющем
 
     def play_selected_video(self, item):
         file_path = self.playlist.get_video_path(self.playlist.row(item))
@@ -679,6 +722,8 @@ class MainWindow(QMainWindow):
             self.load_video(file_path)
 
     def play_pause(self):
+        if not self.current_file_path:
+            return  # нечего играть: иначе кнопка покажет «паузу» над пустым окном
         if self.player.is_playing():
             self.player.pause()
             self._set_play_state(False)
@@ -687,12 +732,12 @@ class MainWindow(QMainWindow):
             self._set_play_state(True)
 
     def next_video(self):
-        file_path = self.playlist.next_video()
+        file_path = self.playlist.next_video(self.current_file_path)
         if file_path:
             self.load_video(file_path)
 
     def prev_video(self):
-        file_path = self.playlist.previous_video()
+        file_path = self.playlist.previous_video(self.current_file_path)
         if file_path:
             self.load_video(file_path)
 
@@ -742,6 +787,8 @@ class MainWindow(QMainWindow):
             self.mini.set_play_button_state(is_playing)
 
     def handle_player_error(self, error_message: str):
+        # Плеер уже остановлен, а сигнала о смене состояния может не быть
+        self._set_play_state(False)
         QMessageBox.critical(self, tr("Ошибка плеера"), error_message)
 
     def _save_progress(self):
